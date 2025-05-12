@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 import numpy as np
 from types import SimpleNamespace
+import os
 
 class TaxaDataset(Dataset):
     def __init__(self, env_stack, embedding, label_stack, k2_stack, trainorval, DeepSDM_conf, cuda_id=0):
