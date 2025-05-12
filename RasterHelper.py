@@ -5,8 +5,8 @@ import json
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import rasterio
-from osgeo import gdal
-from osgeo import gdalconst
+# from osgeo import gdal
+# from osgeo import gdalconst
 import cv2
 from matplotlib import pyplot as plt
 import re
@@ -14,6 +14,10 @@ from sklearn.decomposition import PCA
 import yaml
 import hashlib
 import h5py
+import rasterio
+from rasterio.transform import Affine
+from rasterio.warp import reproject, calculate_default_transform, Resampling
+import warnings
 
 class RasterHelper:
     
@@ -58,189 +62,194 @@ class RasterHelper:
         self.day_last = (self.date_end - self.date_start).days
 
     def create_extent_binary_from_env_layer(self, input_env, spatial_conf):
-        
         self.spatial_conf = spatial_conf
-        
-        in_ds = gdal.Open(input_env, gdalconst.GA_ReadOnly)
+        # Open source environment layer
+        with rasterio.open(input_env) as src:
+            src_crs = src.crs
+            src_transform = src.transform
 
-#         in_nodata = in_ds.GetRasterBand(1).GetNoDataValue()
-#         assert(in_nodata is not None)
+        # Determine output resolution and grid
+        out_res = abs(spatial_conf.out_res) if spatial_conf.out_res else abs(src_transform.a)
+        spatial_conf.out_res = out_res
+        parts = str(out_res).split('.')
+        self.num_digits_after_decimal = min(len(parts[1]) if len(parts)>1 else 0, 6)
+        spatial_conf.x_num_cells = int(spatial_conf.num_of_grid_x * spatial_conf.grid_size)
+        spatial_conf.y_num_cells = int(spatial_conf.num_of_grid_y * spatial_conf.grid_size)
+        spatial_conf.x_end = self.res_rounder(spatial_conf.x_start + spatial_conf.x_num_cells * out_res)
+        spatial_conf.y_end = self.res_rounder(spatial_conf.y_start + spatial_conf.y_num_cells * out_res)
 
-        _, xres, _, _, _, yres = in_ds.GetGeoTransform()
-        in_proj = in_ds.GetProjection()
-
-        # TODO
-        # Need to clarify what value it would be with tif of southern hemisphere
-        
-        x_start = self.spatial_conf.x_start
-        y_start = self.spatial_conf.y_start
-#         x_end = self.spatial_conf.x_end
-#         y_end = self.spatial_conf.y_end
-        
-        if self.spatial_conf.out_res is not None:
-            self.spatial_conf.out_res = abs(self.spatial_conf.out_res)
-        else:
-            assert(abs(xres) == abs(yres))            
-            self.spatial_conf.out_res = abs(xres)
-            
-        digit_parts = str(self.spatial_conf.out_res).split('.')
-        assert(len(digit_parts) == 2)
-        self.num_digits_after_decimal = min(len(digit_parts[1]), 6)
-
-#         self.spatial_conf.x_start = self.res_rounder(self.res_rounder(x_start / self.spatial_conf.out_res, 0) * self.spatial_conf.out_res)
-#         self.spatial_conf.y_start = self.res_rounder(self.res_rounder(y_start / self.spatial_conf.out_res, 0) * self.spatial_conf.out_res)
-
-#         self.spatial_conf.x_num_cells = int(np.ceil(self.res_rounder(abs(x_end - self.spatial_conf.x_start) / self.spatial_conf.out_res)))
-#         self.spatial_conf.y_num_cells = int(np.ceil(self.res_rounder(abs(y_end - self.spatial_conf.y_start) / self.spatial_conf.out_res)))
-
-        self.spatial_conf.x_num_cells = int(self.spatial_conf.num_of_grid_x * self.spatial_conf.grid_size)
-        self.spatial_conf.y_num_cells = int(self.spatial_conf.num_of_grid_y * self.spatial_conf.grid_size)
-
-        self.spatial_conf.x_end = self.res_rounder(self.spatial_conf.x_start + self.spatial_conf.x_num_cells * self.spatial_conf.out_res)
-        self.spatial_conf.y_end = self.res_rounder(self.spatial_conf.y_start + self.spatial_conf.y_num_cells * self.spatial_conf.out_res)
-        out_trans = (self.spatial_conf.x_start, self.spatial_conf.out_res, 0, self.spatial_conf.y_end, 0, -self.spatial_conf.out_res)
-        
-        driver = gdal.GetDriverByName('GTiff')
-        output = driver.Create('workspace/extent_env_example.tif', self.spatial_conf.x_num_cells, self.spatial_conf.y_num_cells, 1, gdalconst.GDT_Float32)
-
-        output.GetRasterBand(1).SetNoDataValue(self.no_data)
-        # 
-        output.SetGeoTransform(out_trans)
-        output.SetProjection(in_proj)
-
-        #
-        out_proj = in_proj
-        gdal.ReprojectImage(in_ds, output, in_proj, out_proj, gdalconst.GRA_Bilinear)
-
-        in_ds = None
-        driver  = None
-        output = None        
-        
-        #############################################################
-        
-        in_ds  = gdal.Open('workspace/extent_env_example.tif', gdalconst.GA_ReadOnly)
-        in_trans = in_ds.GetGeoTransform()
-        in_proj = in_ds.GetProjection()
-
-        extent_array = in_ds.ReadAsArray()
-        extent_array = np.where(extent_array == self.no_data, 0, 1)
-
-        driver= gdal.GetDriverByName('GTiff')
-        output = driver.Create('workspace/extent_binary.tif', self.spatial_conf.x_num_cells, self.spatial_conf.y_num_cells, 1, gdalconst.GDT_Int16)
-        output.SetGeoTransform(in_trans)
-        output.SetProjection(in_proj)
-        export = output.GetRasterBand(1).WriteArray(extent_array)
-        output.GetRasterBand(1).SetNoDataValue(in_ds.GetRasterBand(1).GetNoDataValue())
-
-        in_ds = None
-        driver = None
-        output = None
-        export = None
-        
-        return self.spatial_conf
+        dst_transform = Affine(out_res, 0, spatial_conf.x_start,
+                               0, -out_res, spatial_conf.y_end)
+        profile = {
+            'driver': 'GTiff',
+            'height': spatial_conf.y_num_cells,
+            'width': spatial_conf.x_num_cells,
+            'count': 1,
+            'dtype': 'float32',
+            'crs': src_crs,
+            'transform': dst_transform,
+            'nodata': self.no_data
+        }
+        med_tif = './workspace/extent_env_example.tif'
+        # Reproject to uniform grid
+        with rasterio.open(input_env) as src, rasterio.open(med_tif, 'w', **profile) as dst:
+            reproject(
+                source=src.read(1),
+                destination=rasterio.band(dst, 1),
+                src_transform=src.transform,
+                src_crs=src.crs,
+                dst_transform=dst_transform,
+                dst_crs=src.crs,
+                resampling=Resampling.bilinear
+            )
+        # Binarize
+        with rasterio.open(med_tif) as src:
+            arr = src.read(1)
+            bin_arr = arr.astype('int16')
+            bin_profile = src.profile.copy()
+            bin_profile.update({'dtype':'int16'})
+            out_tif = './workspace/extent_binary.tif'
+            with rasterio.open(out_tif, 'w', **bin_profile) as dst:
+                dst.write(bin_arr, 1)
+        return spatial_conf
 
     def raw_to_medium_(self, raw_env_tif, medium_env_tif):
-        destination = gdal.Open('./workspace/extent_binary.tif')
-        dst_transform = destination.GetGeoTransform()
-        dst_projection = destination.GetProjection()
-
-        src_tif  = gdal.Open(raw_env_tif, gdalconst.GA_ReadOnly)
-        src_trans = src_tif.GetGeoTransform()
-        src_proj = src_tif.GetProjection()
-
-        dst_driver= gdal.GetDriverByName('GTiff')
-        dst_tif = dst_driver.Create(medium_env_tif, 
-                               destination.RasterXSize, 
-                               destination.RasterYSize, 
-                               1, 
-                               gdalconst.GDT_Float32)
-
-        # 设置输出文件地理仿射变换参数与投影
-        dst_tif.GetRasterBand(1).SetNoDataValue(self.no_data)
-        dst_tif.SetGeoTransform(dst_transform)
-        dst_tif.SetProjection(dst_projection)
-
-        # 重投影，插值方法为双线性内插法
-        gdal.ReprojectImage(src_tif, dst_tif, src_proj, dst_projection, gdalconst.GRA_Bilinear)
-
-        destination = None
-        src_tif = None
-        dst_driver  = None
-        dst_tif = None
-
-        
-        # intersect envrionmental layer's extent 
+        """
+        Reproject a raw environmental TIFF to match the grid of
+        './workspace/extent_binary.tif' and save the result as 'medium_env_tif'.
+        After reprojection, update the extent intersection mask.
+        """
+        # 1. Open the reference binary extent TIFF to get target grid properties
+        ref_path = './workspace/extent_binary.tif'
+        with rasterio.open(ref_path) as ref:
+            dst_transform = ref.transform          # target affine transform
+            dst_crs       = ref.crs               # target coordinate reference system
+            dst_width     = ref.width             # target width in pixels
+            dst_height    = ref.height            # target height in pixels
+            profile       = ref.profile.copy()    # copy base file profile for writing
+    
+        # 2. Read the source raw environmental TIFF
+        with rasterio.open(raw_env_tif) as src:
+            src_data      = src.read(1)           # read the first band
+            src_transform = src.transform         # source affine transform
+            src_nodata    = src.nodata
+            # if the source CRS is missing, warn and assume reference CRS
+            if src.crs is None:
+                warnings.warn(
+                    f"{raw_env_tif} has no CRS—assuming {dst_crs}",
+                    UserWarning
+                )
+                src_crs = dst_crs
+            else:
+                src_crs = src.crs
+                
+        # 3. Update the profile for the output file
+        profile.update({
+            'driver': 'GTiff',                    # output format
+            'height': dst_height,                 # match reference height
+            'width': dst_width,                   # match reference width
+            'count': 1,                           # single band
+            'dtype': 'float32',                   # data type
+            'crs': dst_crs,                       # output CRS same as reference
+            'transform': dst_transform,           # output transform same as reference
+            'nodata': self.no_data                # nodata value
+        })
+    
+        # 4. Perform reprojection and write to destination TIFF
+        with rasterio.open(medium_env_tif, 'w', **profile) as dst:
+            reproject(
+                source=src_data,
+                destination=rasterio.band(dst, 1),
+                src_transform=src_transform,
+                src_crs=src_crs,
+                dst_transform=dst_transform,
+                dst_crs=dst_crs,
+                resampling=Resampling.bilinear,     # use bilinear interpolation
+                src_nodata=src_nodata, 
+                dst_nodata=self.no_data
+            )
+    
+        # 5. Update the intersection mask with the newly aligned layer
         self.intersect_extents(medium_env_tif)
         
         
         
+
     def raw_to_medium_agg_(self, doy_to_month_tifs):
-        
-        raw_env_tifs = []
-        medium_env_tifs = []
-        
-        for doy_to_month_tif in doy_to_month_tifs:
-            raw_env_tifs.append(doy_to_month_tif['raw'])
-            medium_env_tifs.append(doy_to_month_tif['medium'])
-        
-        assert(len(np.unique(medium_env_tifs))==1)
-        
-        destination = gdal.Open('./workspace/extent_binary.tif')
-        dst_transform = destination.GetGeoTransform()
-        dst_projection = destination.GetProjection()
-
-        mem_raster_arrs = []
-        for raw_env_tif in raw_env_tifs:
-            src_tif  = gdal.Open(raw_env_tif, gdalconst.GA_ReadOnly)
-            src_trans = src_tif.GetGeoTransform()
-            src_proj = src_tif.GetProjection()
-            
-            #mem_driver= gdal.GetDriverByName('MEM')
-            # not really mem driver
-            mem_driver= gdal.GetDriverByName('GTiff')
-            mem_tif = mem_driver.Create("/tmp/not_really_mem_driver.tif", 
-                                   destination.RasterXSize, 
-                                   destination.RasterYSize, 
-                                   1, 
-                                   gdalconst.GDT_Float32)
-        
-            # 设置输出文件地理仿射变换参数与投影
-            mem_tif.GetRasterBand(1).SetNoDataValue(np.nan)
-            mem_tif.SetGeoTransform(dst_transform)
-            mem_tif.SetProjection(dst_projection)
-
-            # 重投影，插值方法为双线性内插法
-            gdal.ReprojectImage(src_tif, mem_tif, src_proj, dst_projection, gdalconst.GRA_Bilinear)
-            
-            mem_raster_arrs.append(mem_tif.GetRasterBand(1).ReadAsArray())
-            mem_tif = None
-
-        
-        mem_raster_arr_avg = np.nanmean(np.stack(mem_raster_arrs), axis=0)
-        
-        mem_raster_arr_avg = np.where(np.isnan(mem_raster_arr_avg), self.no_data, mem_raster_arr_avg)
-            
-        dst_driver = gdal.GetDriverByName('GTiff')
-        #dst_tif = dst_driver.CreateCopy(medium_env_tifs[0], mem_tif)
-
-        dst_tif = mem_driver.Create(medium_env_tifs[0], 
-                               destination.RasterXSize, 
-                               destination.RasterYSize, 
-                               1, 
-                               gdalconst.GDT_Float32)
-
-        dst_tif.SetGeoTransform(dst_transform)
-        dst_tif.SetProjection(dst_projection)
-        dst_tif.GetRasterBand(1).WriteArray(mem_raster_arr_avg)
-        dst_tif.GetRasterBand(1).SetNoDataValue(self.no_data)
-            
-        destination = None
-        src_tif = None
-        dst_driver  = None
-        dst_tif = None
-        
-        # intersect envrionmental layer's extent 
-        self.intersect_extents(medium_env_tifs[0])
+        """
+        Aggregate multiple raw daily TIFFs into a single monthly TIFF by:
+        1. Reprojecting each raw TIFF to the reference grid.
+        2. Stacking the reprojected arrays.
+        3. Computing the mean value cell-wise.
+        4. Writing out the averaged TIFF and updating the extent intersection.
+        """
+        # 1. Collect raw input paths and expected medium output path
+        raw_env_tifs = [item['raw'] for item in doy_to_month_tifs]
+        medium_env_out = doy_to_month_tifs[0]['medium']
+        assert len(set([item['medium'] for item in doy_to_month_tifs])) == 1, \
+            "All medium outputs must be the same path"
+    
+        # 2. Open the reference extent binary to get grid properties
+        ref_path = './workspace/extent_binary.tif'
+        with rasterio.open(ref_path) as ref:
+            dst_transform = ref.transform          # target affine transform
+            dst_crs       = ref.crs               # target CRS
+            dst_width     = ref.width             # target width
+            dst_height    = ref.height            # target height
+            profile       = ref.profile.copy()    # base profile for outputs
+    
+        # 3. Prepare a list to hold reprojected arrays
+        reprojected_arrs = []
+    
+        # 4. Reproject each raw TIFF to the reference grid
+        for raw_tif in raw_env_tifs:
+            with rasterio.open(raw_tif) as src:
+                src_data      = src.read(1)            # read source band
+                src_transform = src.transform          # source affine
+                src_crs       = src.crs               # source CRS
+    
+            # Allocate array filled with NaN for reprojection
+            dest_array = np.full((dst_height, dst_width), np.nan, dtype='float32')
+    
+            # Perform reprojection into the NumPy array
+            reproject(
+                source=src_data,
+                destination=dest_array,
+                src_transform=src_transform,
+                src_crs=src_crs,
+                dst_transform=dst_transform,
+                dst_crs=dst_crs,
+                resampling=Resampling.bilinear,
+                dst_nodata=np.nan
+            )
+    
+            reprojected_arrs.append(dest_array)
+    
+        # 5. Compute the cell-wise mean, ignoring NaNs
+        stacked = np.stack(reprojected_arrs, axis=0)
+        avg_array = np.nanmean(stacked, axis=0)
+    
+        # 6. Replace NaNs with the designated no-data value
+        avg_array = np.where(np.isnan(avg_array), self.no_data, avg_array)
+    
+        # 7. Update output profile for writing
+        profile.update({
+            'driver': 'GTiff',
+            'dtype': 'float32',
+            'count': 1,
+            'nodata': self.no_data,
+            'transform': dst_transform,
+            'crs': dst_crs,
+            'height': dst_height,
+            'width': dst_width
+        })
+    
+        # 8. Write the averaged array to the medium TIFF
+        with rasterio.open(medium_env_out, 'w', **profile) as dst:
+            dst.write(avg_array.astype('float32'), 1)
+    
+        # 9. Update the global extent intersection mask
+        self.intersect_extents(medium_env_out)
         
         
     def build_env_(self, env, conf):
@@ -395,44 +404,40 @@ class RasterHelper:
         
         
     def raw_to_medium(self, env_raw_conf):
+        """
+        Process raw environment configurations, build medium layers,
+        then apply flood-fill to finalize extent intersection mask.
+        """
+        # 1. Build all medium environment layers
         self.env_medium_list = {}
-        for env in env_raw_conf:
-            for conf in env_raw_conf[env]:
+        for env, confs in env_raw_conf.items():
+            for conf in confs:
                 print(conf)
                 self.build_env_(env, conf)
-                
-        # after all the env layers been read
-        # start processing about the extent_binary_intersect 
-        def floodfill(extent_binary_intersect):
-            extent_binary_intersect_ = extent_binary_intersect.astype(np.uint8)*255
-            mask = np.zeros((extent_binary_intersect_.shape[0]+2, extent_binary_intersect_.shape[1]+2), np.uint8)
-            cv2.floodFill(extent_binary_intersect_, mask, (1559, 0), 255)
-            extent_binary_intersect_inv = cv2.bitwise_not(extent_binary_intersect_)
-            extent_binary_intersect_out = extent_binary_intersect.astype(np.uint8) * 255 | extent_binary_intersect_inv
-            
-            dst = gdal.Open('./workspace/extent_binary.tif', gdalconst.GA_ReadOnly)
-            dst_transform = dst.GetGeoTransform()
-            dst_projection = dst.GetProjection()
-            dst_X = dst.RasterXSize
-            dst_Y = dst.RasterYSize
-            dst = None
-            
-            dst_driver= gdal.GetDriverByName('GTiff')
-            dst_tif = dst_driver.Create('./workspace/extent_binary.tif', 
-                      dst_X, 
-                      dst_Y, 
-                      1, 
-                      gdalconst.GDT_Int32)
 
-            dst_tif.SetGeoTransform(dst_transform)
-            dst_tif.SetProjection(dst_projection)
-            dst_tif.GetRasterBand(1).WriteArray(np.sign(extent_binary_intersect_out).astype('int'))
-            dst_tif.GetRasterBand(1).SetNoDataValue(self.no_data)
-            
-            dst_driver = None
-            dst_tif = None
-            
-        floodfill(self.extent_binary_intersection)
+        # 2. Flood-fill the extent intersection mask using seed at (1559, 0)
+        # Convert binary mask (0/1) to 0/255 range
+        mask_orig = (self.extent_binary_intersection.astype(np.uint8) * 255)
+        # Copy mask for flood-fill operation
+        filled = mask_orig.copy()
+        height, width = filled.shape
+        fill_mask = np.zeros((height + 2, width + 2), np.uint8)
+        # Perform flood-fill from the specified seed point
+        cv2.floodFill(filled, fill_mask, (1559, 0), 255)
+        # Invert flood-filled result to get non-connected background
+        inv_filled = cv2.bitwise_not(filled)
+        # Combine original mask and inverted flood-fill to restore full mask
+        combined = cv2.bitwise_or(mask_orig, inv_filled)
+        # Convert to final binary mask (0/1)
+        final_mask = np.sign(combined).astype(np.int32)
+
+        # 3. Write the final mask back to extent_binary.tif using rasterio
+        tif_path = './workspace/extent_binary.tif'
+        with rasterio.open(tif_path) as src:
+            profile = src.profile.copy()
+        profile.update(dtype='int32', nodata=self.no_data)
+        with rasterio.open(tif_path, 'w', **profile) as dst:
+            dst.write(final_mask, 1)
         
     def random_split_train_val(self, train_ratio=0.7):
         spatial_conf = self.spatial_conf
@@ -449,6 +454,16 @@ class RasterHelper:
         
     def random_split_train_val_within_extent_bin(self, train_ratio=0.7):
         spatial_conf = self.spatial_conf
+        extent_bin_partitions = self.convert_extent_binary_to_extent_partition()
+        
+        num_train_grids = int(np.round(extent_bin_partitions.sum() * train_ratio))
+        train_val_partitions = np.where(np.random.uniform(size=(spatial_conf.num_of_grid_y, spatial_conf.num_of_grid_x)) >= train_ratio, 0, 1)
+        while (train_val_partitions*extent_bin_partitions).sum() != num_train_grids:
+            train_val_partitions = np.where(np.random.uniform(size=train_val_partitions.shape)>=train_ratio, 0, 1).astype(np.uint8)
+        np.savetxt('./workspace/partition.txt', train_val_partitions, fmt='%i', delimiter=',')
+
+    def convert_extent_binary_to_extent_partition(self):
+        spatial_conf = self.spatial_conf
         with rasterio.open('./workspace/extent_binary.tif', 'r') as f:
             extent_bin_array = f.read(1)
         extent_bin_partitions = np.zeros((spatial_conf.num_of_grid_y, spatial_conf.num_of_grid_x))
@@ -458,18 +473,12 @@ class RasterHelper:
                 if subplot.sum() > 0:
                     extent_bin_partitions[i_row, i_col] = 1
         np.savetxt('./workspace/extent_partition.txt', extent_bin_partitions, fmt='%i', delimiter=',')
-        
-        num_train_grids = int(np.round(extent_bin_partitions.sum() * train_ratio))
-        train_val_partitions = np.where(np.random.uniform(size=(spatial_conf.num_of_grid_y, spatial_conf.num_of_grid_x)) >= train_ratio, 0, 1)
-        while (train_val_partitions*extent_bin_partitions).sum() != num_train_grids:
-            train_val_partitions = np.where(np.random.uniform(size=train_val_partitions.shape)>=train_ratio, 0, 1).astype(np.uint8)
-        np.savetxt('./workspace/partition.txt', train_val_partitions, fmt='%i', delimiter=',')
-        
+        return extent_bin_partitions
         
     def view_train_val_splits(self, partition_file='./workspace/partition.txt'):
         spatial_conf = self.spatial_conf
-        ext_bin  = gdal.Open('./workspace/extent_binary.tif', gdalconst.GA_ReadOnly)
-        ext_bin_array = ext_bin.ReadAsArray()
+        with rasterio.open('./workspace/extent_binary.tif') as src:
+            ext_bin_array = src.read(1)
         train_val_partitions = np.loadtxt(partition_file, delimiter=',')
         train_val_mask = cv2.resize(train_val_partitions, (spatial_conf.num_of_grid_x * spatial_conf.grid_size, spatial_conf.num_of_grid_y * spatial_conf.grid_size), interpolation=cv2.INTER_NEAREST)
         plt.imshow(ext_bin_array * (train_val_mask.astype(float) + .5) / 2)
@@ -782,7 +791,7 @@ class RasterHelper:
 #                         transform = extent_transform
 #                     ) as dst:
 #                         dst.write(rst * extent_binary, 1)
-                    h5f.create_dataset(date_span, data = rst * extent_binary, compression = 'gzip')
+                    h5f.create_dataset(date_span, data = rst * extent_binary, compression = 'gzip', dtype = np.int16)
                     
                     file_name[sp]['h5file_dataset_name'][date_span] = date_span
 
@@ -803,7 +812,7 @@ class RasterHelper:
             self.CCI_value = np.empty((len(CCI_conf[env][0]['unique_class']), ), dtype = object)
             for conf in CCI_conf[env]:
                 print(conf)
-                self.build_env_CCI_(env, conf) 
+                self.build_env_CCI_(env, conf)
         if conf['PCA'] != None:
             self.CCI_PCA(CCI_conf)
             
@@ -837,145 +846,199 @@ class RasterHelper:
 
 
     def raw_to_medium_CCI_(self, raw_env_nc, medium_env_tif, conf):
-        destination = gdal.Open('./workspace/extent_binary.tif')
-        dst_transform = destination.GetGeoTransform()
-        dst_projection = destination.GetProjection()
-
-        src_nc  = gdal.Open(f'NETCDF:{raw_env_nc}:{conf["layer_name"]}', gdalconst.GA_ReadOnly)
-        src_proj = src_nc.GetProjection()
-
-        dst_driver= gdal.GetDriverByName('GTiff')
-        dst_tif = dst_driver.Create('/tmp/not_really_mem_driver.tif', 
-                                    destination.RasterXSize, 
-                                    destination.RasterYSize, 
-                                    1, 
-                                    gdalconst.GDT_Int32)
-        dst_tif.SetGeoTransform(dst_transform)
-        dst_tif.SetProjection(dst_projection)
-        gdal.ReprojectImage(src_nc, dst_tif, src_proj, dst_projection, gdalconst.GRA_Mode)
-        dst_value = dst_tif.GetRasterBand(1).ReadAsArray()
-        dst_tif = None
-        dst_driver = None
-        src_nc = None
-        
-        # without PCA
-        # directly export all the tiffs
-        if conf['PCA'] == None:
-            for value in conf['unique_class']:
-                dst_unique_value = np.where(dst_value == value, 1, 0)
-                dst_driver= gdal.GetDriverByName('GTiff')
-                dst_tif = dst_driver.Create(medium_env_tif.replace('[CLASS]', f'type{value:03d}'), 
-                                            destination.RasterXSize, 
-                                            destination.RasterYSize, 
-                                            1, 
-                                            gdalconst.GDT_Int32)
-
-                dst_tif.GetRasterBand(1).WriteArray(dst_unique_value)
-                dst_tif.GetRasterBand(1).SetNoDataValue(self.no_data)
-                dst_tif.SetGeoTransform(dst_transform)
-                dst_tif.SetProjection(dst_projection)
-
-                dst_driver  = None
-                dst_tif = None
-        
-        # with PCA
-        else:
-            # extent_binary
-            extent_binary = destination.GetRasterBand(1).ReadAsArray()
-            self.extent_binary_reshape_idx = extent_binary.reshape(-1) == 1
-            for i, value in enumerate(conf['unique_class']):
+        """
+        Read a NetCDF environmental layer via Rasterio, reproject it to the reference grid,
+        then either export binary class rasters (if no PCA) or accumulate values for PCA.
+        """
+        # 1. Load reference grid to get transform, CRS, and profile
+        ref_path = './workspace/extent_binary.tif'
+        with rasterio.open(ref_path) as ref:
+            dst_transform = ref.transform       # target affine transform
+            dst_crs       = ref.crs            # target coordinate reference system
+            dst_width     = ref.width          # target width in pixels
+            dst_height    = ref.height         # target height in pixels
+            base_profile  = ref.profile.copy() # template profile for outputs
+    
+        # 2. Open the NetCDF subdataset
+        src_path = f'NETCDF:{raw_env_nc}:{conf["layer_name"]}'
+        with rasterio.open(src_path) as src:
+            src_data      = src.read(1)         # read the data array
+            src_transform = src.transform       # source affine transform
+            src_nodata = src.nodata
+            # if the source CRS is missing, warn and assume reference CRS
+            if src.crs is None:
+                warnings.warn(
+                    f"{src_path} has no CRS—assuming {dst_crs}",
+                    UserWarning
+                )
+                src_crs = dst_crs
+            else:
+                src_crs = src.crs
                 
-                # only compute PCA with the value in extent_binary
-                dst_unique_value = np.where(dst_value[extent_binary == 1] == value, 1, 0)
-                if self.CCI_value[i] is None:
-                    self.CCI_value[i] = dst_unique_value.reshape(-1)
+        # 3. Allocate an array for reprojection output
+        dest_array = np.full((dst_height, dst_width), self.no_data, dtype='int32')
+    
+        # 4. Reproject using nearest-neighbor for categorical data
+        reproject(
+            source=src_data,
+            destination=dest_array,
+            src_transform=src_transform,
+            src_crs=src_crs,
+            dst_transform=dst_transform,
+            dst_crs=dst_crs,
+            resampling=Resampling.nearest,
+            src_nodata=src_nodata,
+            dst_nodata=self.no_data
+        )
+    
+        # 5. If no PCA is requested, export one binary TIFF per class
+        if conf['PCA'] is None:
+            profile = base_profile
+            profile.update({
+                'driver': 'GTiff',
+                'dtype': 'int32',
+                'count': 1,
+                'nodata': self.no_data,
+                'transform': dst_transform,
+                'crs': dst_crs
+            })
+            for cls in conf['unique_class']:
+                # Create binary mask for this class
+                mask = (dest_array == cls).astype('int32')
+                out_path = medium_env_tif.replace('[CLASS]', f'type{cls:03d}')
+                with rasterio.open(out_path, 'w', **profile) as dst:
+                    dst.write(mask, 1)
+        else:
+            # 6. With PCA: collect presence values under valid extent for each class
+            # Read reference extent mask
+            with rasterio.open(ref_path) as ref:
+                extent_mask = ref.read(1) == 1  # boolean mask
+            self.extent_binary_reshape_idx = extent_mask.reshape(-1) == 1
+
+            # Flatten and filter by extent mask
+            flat_values = dest_array.flatten()[extent_mask.flatten()]
+            # print(flat_values.shape)
+            # Accumulate values in self.CCI_value list
+            for idx, cls in enumerate(conf['unique_class']):
+                class_presence = (flat_values == cls).astype('int32')
+                if self.CCI_value[idx] is None:
+                    self.CCI_value[idx] = class_presence
                 else:
-                    self.CCI_value[i] = np.concatenate((self.CCI_value[i], dst_unique_value.reshape(-1)))      
-        
-        destination = None
+                    self.CCI_value[idx] = np.concatenate((self.CCI_value[idx], class_presence))
         
     def CCI_PCA(self, CCI_conf):
-        
-        for env in CCI_conf:
-            for conf in CCI_conf[env]:
-                pass
-        
-        df_landcover = pd.DataFrame()
-        for value in self.CCI_value:
-            df_landcover = pd.concat((df_landcover, pd.DataFrame(value)), axis = 1)
-        df_landcover = df_landcover.set_axis(conf['unique_class'], axis = 1)
-        
+        """
+        Perform PCA on collected categorical class presence data (self.CCI_value),
+        then export the top components as GeoTIFF layers aligned to the reference grid.
+        """
+        # 1. Build a DataFrame for PCA
+        # Concatenate each class presence vector as a column
+        X = np.column_stack(self.CCI_value)   # 生成 shape=(n_samples, n_features) 的纯数值 2D 数组
+        df_landcover = pd.DataFrame(X)
+        # Use the 'unique_class' list from the last config to name columns
+        # (Assumes all configs share the same 'unique_class')
+        last_conf = next(iter(CCI_conf.values()))[-1]
+        df_landcover.columns = last_conf['unique_class']
+    
+        # 2. Fit PCA
         pca = PCA()
         pca.fit(df_landcover)
         self.CCI_PCA_value = pca.transform(df_landcover)
         self.CCI_PCA_components = pca.components_
         self.CCI_PCA_variance_ratio = pca.explained_variance_ratio_
-        
-        # decide how many components should be logged
-        num_components = 0
-        while True:
-            if self.CCI_PCA_variance_ratio[:num_components].sum() >= conf['PCA']:
-                break
-            num_components += 1
+    
+        # 3. Decide number of components to explain desired variance
+        target = last_conf['PCA']
+        cum_var = np.cumsum(self.CCI_PCA_variance_ratio)
+        num_components = np.searchsorted(cum_var, target) + 1
         print(f'{num_components} components have been chosen.')
-        print(f'Explain {self.CCI_PCA_variance_ratio[:num_components].sum()*100}% of variance. ')
-        
-        # export the pca-value landcover layers
-        destination = gdal.Open('./workspace/extent_binary.tif')
-        dst_transform = destination.GetGeoTransform()
-        dst_projection = destination.GetProjection()
-        
-        num_cell = self.CCI_PCA_value.shape[0] // len(self.CCI_PCA_year)
+        print(f'Explain {cum_var[num_components-1]*100:.2f}% of variance.')
+    
+        # 4. Read reference grid properties for writing
+        ref_path = './workspace/extent_binary.tif'
+        with rasterio.open(ref_path) as ref:
+            dst_transform = ref.transform
+            dst_crs       = ref.crs
+            dst_profile   = ref.profile.copy()
+        # Update profile for PCA output
+        dst_profile.update({
+            'driver': 'GTiff',
+            'dtype': 'float32',
+            'count': 1,
+            'nodata': self.no_data,
+            'transform': dst_transform,
+            'crs': dst_crs
+        })
+    
+        # 5. Export each selected principal component as a GeoTIFF
+        num_cells = self.CCI_PCA_value.shape[0] // len(self.CCI_PCA_year)
         medium_env_dir = 'medium'
-        for i, year in enumerate(self.CCI_PCA_year):
-            for n_com in range(num_components):
-                medium_env_tif = os.path.join(medium_env_dir, conf['env_out_template']).replace('[CLASS]', f'PC{n_com:02d}').replace('[YEAR]', f'{year:04d}')
-                
-                # create folder 'land_cover_PCXX'
-                if not os.path.exists('/'.join(medium_env_tif.split('/')[:-1])):
-                    os.makedirs('/'.join(medium_env_tif.split('/')[:-1]))
-                
-                rst_value_extent = self.CCI_PCA_value[i*num_cell:(i+1)*num_cell, n_com]
-                rst_value_fullsize = np.zeros([self.spatial_conf.y_num_cells * self.spatial_conf.x_num_cells, ])
-                rst_value_fullsize[self.extent_binary_reshape_idx] = rst_value_extent
-                rst_value = rst_value_fullsize.reshape(self.spatial_conf.y_num_cells, self.spatial_conf.x_num_cells)
-                dst_driver = gdal.GetDriverByName('GTiff')
-                dst_tif = dst_driver.Create(medium_env_tif, 
-                                            destination.RasterXSize, 
-                                            destination.RasterYSize, 
-                                            1, 
-                                            gdalconst.GDT_Float32)
-
-                dst_tif.GetRasterBand(1).WriteArray(rst_value)
-                dst_tif.GetRasterBand(1).SetNoDataValue(self.no_data)
-                dst_tif.SetGeoTransform(dst_transform)
-                dst_tif.SetProjection(dst_projection)
-
-                dst_driver  = None
-                dst_tif = None 
-        destination = None
-        
-        
+        for idx, year in enumerate(self.CCI_PCA_year):
+            for comp in range(num_components):
+                # Construct output path using template
+                out_tif = os.path.join(
+                    medium_env_dir,
+                    last_conf['env_out_template']
+                        .replace('[CLASS]', f'PC{(comp+1):02d}')
+                        .replace('[YEAR]', f'{year:04d}')
+                )
+                os.makedirs(os.path.dirname(out_tif), exist_ok=True)
+    
+                # Extract data for this year and component
+                start = idx * num_cells
+                end   = start + num_cells
+                flat_values = self.CCI_PCA_value[start:end, comp]
+    
+                # Reconstruct full grid array
+                grid_size = self.spatial_conf.y_num_cells * self.spatial_conf.x_num_cells
+                full_array = np.full(grid_size, self.no_data, dtype='float32')
+                full_array[self.extent_binary_reshape_idx] = flat_values
+                grid_array = full_array.reshape(
+                    self.spatial_conf.y_num_cells,
+                    self.spatial_conf.x_num_cells
+                )
+    
+                # Write to GeoTIFF
+                with rasterio.open(out_tif, 'w', **dst_profile) as dst:
+                    dst.write(grid_array, 1)
+    
+        # 6. Update env_medium_list for each year/month/component
         for year in self.CCI_PCA_year:
             for month in range(1, 13):
-                for pc in range(num_components):
-                    if f'landcover_PC{pc:02d}' not in self.env_medium_list:
-                        self.env_medium_list[f'landcover_PC{pc:02d}'] = {}
-                        
-                    # representation of yyyy-mm-dd
-                    y_m_d = datetime.strftime(datetime.strptime(f'{year}-{month}', '%Y-%m'), '%Y-%m-%d')
-                    self.env_medium_list[f'landcover_PC{pc:02d}'][y_m_d] = os.path.join(medium_env_dir, f'landcover_PC{pc:02d}', f'landcover_PC{pc:02d}_{year:04d}.tif')
+                ymd = datetime(year, month, 1).strftime('%Y-%m-%d')
+                for comp in range(num_components):
+                    key = f'landcover_PC{(comp+1):02d}'
+                    if key not in self.env_medium_list:
+                        self.env_medium_list[key] = {}
+                    path = os.path.join(
+                        medium_env_dir, key,
+                        f'{key}_{year:04d}.tif'
+                    )
+                    self.env_medium_list[key][ymd] = path
                     
     def intersect_extents(self, tif):
-        dst = gdal.Open(tif, gdalconst.GA_ReadOnly)
+        """
+        Update the internal extent intersection mask by logically AND-ing
+        the mask from the given TIFF with the existing intersection.
+        """
+        # 1. Read the new layer and create a boolean mask where data is valid
+        with rasterio.open(tif) as src:
+            arr = src.read(1)
+            nodata = src.nodata
+            valid_mask = arr != nodata  # True where there is data
+    
+        # 2. Initialize the intersection mask if this is the first layer
         if self.extent_binary_intersection is None:
-            with rasterio.open('./workspace/extent_binary.tif', 'r') as f:
-                extent_bin_array = f.read(1)
-            assert(extent_bin_array.shape == (dst.RasterYSize, dst.RasterXSize))
-            self.extent_binary_intersection = np.where(extent_bin_array == 1, True, False)
-#             self.extent_binary_intersection = np.full((dst.RasterYSize, dst.RasterXSize), True)
-        self.extent_binary_intersection = np.logical_and(~(dst.GetRasterBand(1).ReadAsArray() == dst.GetRasterBand(1).GetNoDataValue()), self.extent_binary_intersection)
-        dst = None
+            with rasterio.open('./workspace/extent_binary.tif') as ref:
+                ref_arr = ref.read(1)
+                # True where the original extent binary is 1
+                self.extent_binary_intersection = (ref_arr == 1)
+    
+        # 3. Update the intersection mask by logical AND
+        self.extent_binary_intersection = np.logical_and(
+            self.extent_binary_intersection,
+            valid_mask
+        )
         
     def log_env_medium_list(self):
         medium_env_dir = 'medium'
