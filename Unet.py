@@ -109,7 +109,8 @@ class Unet(nn.Module):
         
         # t(K) * Q
         a = torch.bmm(Q, K.permute(0, 2, 1)) / (100**(1/2))
-        A = F.softmax(a.squeeze(), dim = 1)
+        a = a.squeeze(1)
+        A = F.softmax(a, dim = -1)
 
         # the linear transformation of attention score (A)
         A1 = F.softmax(self.a_linear1(A), dim = 1)
