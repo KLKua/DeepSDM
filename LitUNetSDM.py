@@ -508,7 +508,7 @@ class LitUNetSDM(pl.LightningModule):
 
 #             print(time.time() - start_time)
 
-            ax.clear()
+                ax.clear()
         
         
         
