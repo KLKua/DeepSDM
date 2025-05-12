@@ -16,6 +16,7 @@ class TaxaDataset(Dataset):
         self.date_list = label_stack['date']
         self.embedding = embedding
         self.split = torch.tensor(np.loadtxt(os.path.join('./workspace', 'partition.txt'), delimiter = ',')).to(torch.int)
+        self.extent_split = torch.tensor(np.loadtxt(os.path.join('./workspace', 'extent_partition.txt'), delimiter = ',')).to(torch.int)
         self.training_conf = SimpleNamespace(**DeepSDM_conf.training_conf)
 
         if trainorval == 'train':
@@ -52,8 +53,8 @@ class TaxaDataset(Dataset):
         # subsample size based on split
         split_tif = torch.zeros(self.height_new, self.width_new)
         split_element = []
-        h_, w_ = torch.where(self.split == self.trainorval)
-        for i in range(sum(self.split.view(-1) == self.trainorval)):
+        h_, w_ = torch.where((self.split == self.trainorval) & (self.extent_split == 1))
+        for i in range(sum((self.split.view(-1) == self.trainorval) & (self.extent_split.view(-1) == 1))):
             height_start = h_[i] * self.split_height
             height_end = (h_[i] + 1) * self.split_height
             width_start = w_[i] * self.split_width
@@ -135,7 +136,7 @@ class TaxaDataset(Dataset):
         return [inputs_transform, embeddings], labels_transform, k2_transform, species, date
 
     def __len__(self):
-        return len(self.species_date_list) * sum(self.split.view(-1) == self.trainorval) * self.random_stack_num
+        return len(self.species_date_list) * sum((self.split.view(-1) == self.trainorval) & (self.extent_split.view(-1) == 1)) * self.random_stack_num
     
     
     def _getidx(self, index):
