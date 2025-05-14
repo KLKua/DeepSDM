@@ -1,6 +1,8 @@
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
+from torchvision.transforms import ToTensor
+import cv2
 
 class TaxaDataset_smoothviz(Dataset):
     def __init__(self, idx_species_date, env_stack, embedding, label_stack, subsample_height, subsample_width, num_smoothviz_steps):
@@ -44,31 +46,21 @@ class TaxaDataset_smoothviz(Dataset):
         self.env = F.pad(torch.cat(env_new),
                          (self.subsample_width, 2 * self.subsample_width, self.subsample_height, 2 * self.subsample_height), 
                          mode = 'replicate') #.to(torch.float)
+        
+        self.extent_binary = F.pad(ToTensor()(cv2.imread('./workspace/extent_binary.tif', cv2.IMREAD_UNCHANGED)), 
+                                   (self.subsample_width, 2 * self.subsample_width, self.subsample_height, 2 * self.subsample_height), 
+                                   mode = 'replicate')
         self.env = self.env.cpu()
+        self.check_valid_indices()
         torch.cuda.empty_cache()
         
     def __getitem__(self, index):
-        idx_height_elements = index % (self.height_elements + 2)
-        other_idx = index // (self.height_elements + 2)
-        
-        idx_width_elements = other_idx % (self.width_elements + 2)
-        other_idx = other_idx // (self.width_elements + 2)
-        
-        idx_height_step = other_idx % self.num_smoothviz_steps
-        idx_width_step = other_idx // self.num_smoothviz_steps
-        
-        step_height = self.step_height * idx_height_step
-        step_width = self.step_width * idx_width_step
-        
-        height_start, height_end = idx_height_elements * self.subsample_height + step_height, (idx_height_elements + 1) * self.subsample_height + step_height
-        width_start, width_end = idx_width_elements * self.subsample_width + step_width, (idx_width_elements + 1) * self.subsample_width + step_width
-        
-        inputs = self.env[:, height_start:height_end, width_start:width_end]#.cuda()
-
+        height_start, height_end, width_start, width_end = self.valid_indices[index]
+        inputs = self.env[:, height_start:height_end, width_start:width_end]
         return inputs, self.embedding, (height_start, height_end, width_start, width_end), self.species_date
     
     def __len__(self):
-        return (self.height_elements + 2) * (self.width_elements + 2) * self.num_smoothviz_steps * self.num_smoothviz_steps
+        return len(self.valid_indices)
 
     def async_cuda(self):
         self.env = self.env.cuda(non_blocking=True)
@@ -79,3 +71,27 @@ class TaxaDataset_smoothviz(Dataset):
         self.env = self.env.cpu()
         self.embedding = self.embedding.cpu()
 #         return self
+    def check_valid_indices(self):
+        self.valid_indices = []
+        total_len = (self.height_elements + 2) * (self.width_elements + 2) * self.num_smoothviz_steps**2
+        for index in range(total_len):
+            idx_height_elements = index % (self.height_elements + 2)
+            other_idx = index // (self.height_elements + 2)
+
+            idx_width_elements = other_idx % (self.width_elements + 2)
+            other_idx = other_idx // (self.width_elements + 2)
+
+            idx_height_step = other_idx % self.num_smoothviz_steps
+            idx_width_step = other_idx // self.num_smoothviz_steps
+
+            step_height = self.step_height * idx_height_step
+            step_width = self.step_width * idx_width_step
+
+            height_start = idx_height_elements * self.subsample_height + step_height
+            height_end = (idx_height_elements + 1) * self.subsample_height + step_height
+            width_start = idx_width_elements * self.subsample_width + step_width
+            width_end = (idx_width_elements + 1) * self.subsample_width + step_width
+
+            inputs = self.env[:, height_start:height_end, width_start:width_end]
+            if self.extent_binary[:, height_start:height_end, width_start:width_end].sum() != 0:
+                self.valid_indices.append((height_start, height_end, width_start, width_end))
