@@ -512,8 +512,8 @@ class LitUNetSDM(pl.LightningModule):
         
         
         
-        auc_val = sum(roc_epoch_val) / len(roc_epoch_val) #sum([i for i in roc_epoch_val if i > 0]) / len([i for i in roc_epoch_val if i > 0])
-        auc_train = sum(roc_epoch_train) / len(roc_epoch_train) # sum([i for i in roc_epoch_train if i > 0]) / len([i for i in roc_epoch_train if i > 0])
+        auc_val = sum(roc_epoch_val) / len(roc_epoch_val) if len(roc_epoch_val) > 0 else 0  #sum([i for i in roc_epoch_val if i > 0]) / len([i for i in roc_epoch_val if i > 0])
+        auc_train = sum(roc_epoch_train) / len(roc_epoch_train) if len(roc_epoch_train) > 0 else 0 # sum([i for i in roc_epoch_train if i > 0]) / len([i for i in roc_epoch_train if i > 0])
         
         plt.close()
         
