@@ -38,7 +38,7 @@ class TaxaDataset_smoothviz(Dataset):
         
         env_new = []
         for i in range(len(env)):
-            env_new.append(env[i:(i+1), :, :].cuda())
+            env_new.append(env[i:(i+1), :, :])
 
 #             env_new.append(F.pad(env[i:(i+1), :, :], 
 #                                  (self.subsample_width, 2 * self.subsample_width, self.subsample_height, 2 * self.subsample_height), 

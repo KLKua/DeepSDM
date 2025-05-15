@@ -71,6 +71,10 @@ class LitUNetSDM(pl.LightningModule):
         
     def _step(self, batch, batch_idx, val=False, dataloader_idx=0):
         [inputs, embeddings], labels, k2, species, date = batch
+        inputs = inputs.to(self.device, non_blocking=True)
+        embeddings = embeddings.to(self.device, non_blocking=True)
+        labels = labels.to(self.device, non_blocking=True)
+        k2 = k2.to(self.device, non_blocking=True)
         inputs = inputs.reshape(-1, *inputs.shape[-3:])
         embeddings = embeddings.reshape(-1, *embeddings.shape[-3:])
         labels = labels.reshape(-1, *labels.shape[-3:])
@@ -384,8 +388,8 @@ class LitUNetSDM(pl.LightningModule):
         # REFACTOR THE DATALOADING PROCEDURE WOULD HELP
 
         dataloaders_smoothviz = self.trainer.datamodule.smoothviz_dataloader()
-        for _ in dataloaders_smoothviz:
-            _.dataset.async_cuda()
+        # for _ in dataloaders_smoothviz:
+        #     _.dataset.async_cuda()
 
         print("\n")
         for dataloader_idx, dataloader_smoothviz in enumerate(dataloaders_smoothviz):
@@ -568,8 +572,8 @@ class LitUNetSDM(pl.LightningModule):
             extent_binary = ref.read(1)
             extent_transform = ref.transform
 
-        for _ in dataloaders_predict:
-            _.dataset.async_cuda()
+        # for _ in dataloaders_predict:
+        #     _.dataset.async_cuda()
 
         results = dict()
         for dataloader_idx, dataloader_predict in enumerate(dataloaders_predict):

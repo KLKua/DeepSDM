@@ -57,8 +57,8 @@ class LitDeepSDMData(pl.LightningDataModule):
             y_m = '-'.join(date_.split('-')[:-1])
             for env_ in stage_env_list:
                 with rasterio.open(os.path.join(self.env_inf['dir_base'], f"{self.env_inf['info'][env_][date_]['tif_span_avg']}")) as f:
-                    img_ = ToTensor()(f.read(1)).cuda()
-                img = img_.where(self.geo_extent.cuda() == 1, torch.normal(self.env_inf['info'][env_]['mean'], self.env_inf['info'][env_]['sd'], img_.shape).cuda())
+                    img_ = ToTensor()(f.read(1))
+                img = img_.where(self.geo_extent == 1, torch.normal(self.env_inf['info'][env_]['mean'], self.env_inf['info'][env_]['sd'], img_.shape))
                 
                 # environment factors which should be normalized
                 if env_ not in self.training_conf.non_normalize_env_list:
@@ -66,7 +66,7 @@ class LitDeepSDMData(pl.LightningDataModule):
                 else:
                     img_norm = img
                 date_env_list.append(img_norm)
-            env_tensor_list.append(torch.cat(date_env_list)[None, ])
+            env_tensor_list.append(torch.stack(date_env_list))
         env_stack['tensor'] = torch.cat(env_tensor_list)  # env_stack['tensor'].shape = (len(stage_date_list), len(env_list), height, width)
 
         return env_stack
@@ -192,10 +192,10 @@ class LitDeepSDMData(pl.LightningDataModule):
         ###
         torch.cuda.synchronize()
         start_time = time.time()
-        self.env_stack_train = torch.load(f'{self.tmp_path}/env_stack_train.pth', map_location='cpu')
-        self.embedding_train = torch.load(f'{self.tmp_path}/embedding_train.pth', map_location='cpu')
-        self.label_stack_train = torch.load(f'{self.tmp_path}/label_stack_train.pth', map_location='cpu')
-        self.k2_stack_train = torch.load(f'{self.tmp_path}/k2_stack_train.pth', map_location='cpu')
+        self.env_stack_train = torch.load(f'{self.tmp_path}/env_stack_train.pth', map_location='cpu', mmap = True)
+        self.embedding_train = torch.load(f'{self.tmp_path}/embedding_train.pth', map_location='cpu', mmap = True)
+        self.label_stack_train = torch.load(f'{self.tmp_path}/label_stack_train.pth', map_location='cpu', mmap = True)
+        self.k2_stack_train = torch.load(f'{self.tmp_path}/k2_stack_train.pth', map_location='cpu', mmap = True)
         print(f'train ############################################## {self.trainer.global_rank}')
         if self.trainer.global_rank == 0:
             dataset_train = TaxaDataset(
@@ -215,14 +215,14 @@ class LitDeepSDMData(pl.LightningDataModule):
         ###
         torch.cuda.synchronize()
         start_time = time.time()
-        self.label_stack_val = torch.load(f'{self.tmp_path}/label_stack_val.pth', map_location='cpu')
+        self.label_stack_val = torch.load(f'{self.tmp_path}/label_stack_val.pth', map_location='cpu', mmap = True)
         print(f'val ############################################## {self.trainer.global_rank}')
         if self.trainer.global_rank == 0:
             dataset_val = TaxaDataset(
-                torch.load(f'{self.tmp_path}/env_stack_val.pth', map_location='cpu'), 
-                torch.load(f'{self.tmp_path}/embedding_val.pth', map_location='cpu'), 
+                torch.load(f'{self.tmp_path}/env_stack_val.pth', map_location='cpu', mmap = True), 
+                torch.load(f'{self.tmp_path}/embedding_val.pth', map_location='cpu', mmap = True), 
                 self.label_stack_val, 
-                torch.load(f'{self.tmp_path}/k2_stack_val.pth', map_location='cpu'), 'val', self.DeepSDM_conf, self.trainer.global_rank
+                torch.load(f'{self.tmp_path}/k2_stack_val.pth', map_location='cpu', mmap = True), 'val', self.DeepSDM_conf, self.trainer.global_rank
             )
         else:
             dataset_val = None
@@ -253,10 +253,10 @@ class LitDeepSDMData(pl.LightningDataModule):
         ##########################################################        
         torch.cuda.synchronize()
         start_time = time.time()
-        self.env_stack_smoothviz = torch.load(f'{self.tmp_path}/env_stack_smoothviz.pth', map_location='cpu')
-        self.embedding_smoothviz = torch.load(f'{self.tmp_path}/embedding_smoothviz.pth', map_location='cpu')
-        self.label_stack_smoothviz = torch.load(f'{self.tmp_path}/label_stack_smoothviz.pth', map_location='cpu')
-        self.k2_stack_smoothviz = torch.load(f'{self.tmp_path}/k2_stack_smoothviz.pth', map_location='cpu')
+        self.env_stack_smoothviz = torch.load(f'{self.tmp_path}/env_stack_smoothviz.pth', map_location='cpu', mmap = True)
+        self.embedding_smoothviz = torch.load(f'{self.tmp_path}/embedding_smoothviz.pth', map_location='cpu', mmap = True)
+        self.label_stack_smoothviz = torch.load(f'{self.tmp_path}/label_stack_smoothviz.pth', map_location='cpu', mmap = True)
+        self.k2_stack_smoothviz = torch.load(f'{self.tmp_path}/k2_stack_smoothviz.pth', map_location='cpu', mmap = True)
         
         if self.trainer.global_rank == 0:
             self.datasets_smoothviz = []
@@ -284,12 +284,12 @@ class LitDeepSDMData(pl.LightningDataModule):
         self.trainer.strategy.barrier()
         
     def train_dataloader(self):
-        return DataLoader(self.dataset_train, self.training_conf.batch_size_train, shuffle=True, num_workers=16, pin_memory=True)
+        return DataLoader(self.dataset_train, self.training_conf.batch_size_train, shuffle=True, num_workers=0, pin_memory=True)
 
     def val_dataloader(self):
         return [
-            DataLoader(self.dataset_train_on_val, self.training_conf.batch_size_train, shuffle=False, num_workers=16, pin_memory=True), # eval train dataset first
-            DataLoader(self.dataset_val, self.training_conf.batch_size_train, shuffle=False, num_workers=16, pin_memory=True), # Why shuffling here?
+            DataLoader(self.dataset_train_on_val, self.training_conf.batch_size_train, shuffle=False, num_workers=0, pin_memory=True), # eval train dataset first
+            DataLoader(self.dataset_val, self.training_conf.batch_size_train, shuffle=False, num_workers=0, pin_memory=True), # Why shuffling here?
         ]
 
     def smoothviz_dataloader(self):
@@ -308,10 +308,10 @@ class LitDeepSDMData(pl.LightningDataModule):
             species_list,
             'predict',
         )
-        self.env_stack_predict = torch.load(f'{self.tmp_path}/env_stack_predict.pth', map_location='cpu')
-        self.embedding_predict = torch.load(f'{self.tmp_path}/embedding_predict.pth', map_location='cpu')
-        self.label_stack_predict = torch.load(f'{self.tmp_path}/label_stack_predict.pth', map_location='cpu')
-        self.k2_stack_predict = torch.load(f'{self.tmp_path}/k2_stack_predict.pth', map_location='cpu')
+        self.env_stack_predict = torch.load(f'{self.tmp_path}/env_stack_predict.pth', map_location='cpu', mmap = True)
+        self.embedding_predict = torch.load(f'{self.tmp_path}/embedding_predict.pth', map_location='cpu', mmap = True)
+        self.label_stack_predict = torch.load(f'{self.tmp_path}/label_stack_predict.pth', map_location='cpu', mmap = True)
+        self.k2_stack_predict = torch.load(f'{self.tmp_path}/k2_stack_predict.pth', map_location='cpu', mmap = True)
         self.datasets_predict = []
         print ("Setting up dataset for prediction...")
 

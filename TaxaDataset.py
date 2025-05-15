@@ -66,13 +66,13 @@ class TaxaDataset(Dataset):
         
         # adjust shape of env_stack, label_stack and k2 to (height_new, width_new)
         # env_stack
-        env_stack_new = env_stack['tensor'].detach().to(f'cuda:{self.cuda_id}')
+        env_stack_new = env_stack['tensor']
         torch.cuda.synchronize()
         self.env_stack = F.pad(env_stack_new,
                               (0, (self.width_new - self.width_original), 0, (self.height_new - self.height_original)),
                               mode = 'replicate')
         self.env_stack = self.env_stack.cpu()
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
         
         #label_stack
         label_stack_new = label_stack['tensor'].detach().cuda(self.cuda_id)
@@ -81,7 +81,7 @@ class TaxaDataset(Dataset):
                                  mode = 'constant', 
                                  value = 0)
         self.label_stack = self.label_stack.cpu()
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
         
         #k2
         k2_stack_new = k2_stack['tensor'].detach().cuda(self.cuda_id)
@@ -90,7 +90,7 @@ class TaxaDataset(Dataset):
                               mode = 'constant',
                               value = -9999)
         self.k2_stack = self.k2_stack.cpu()
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
 
         self.k2_stack_date = k2_stack['date']
 
