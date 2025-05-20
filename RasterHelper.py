@@ -135,10 +135,10 @@ class RasterHelper:
             src_nodata    = src.nodata
             # if the source CRS is missing, warn and assume reference CRS
             if src.crs is None:
-                warnings.warn(
-                    f"{raw_env_tif} has no CRS—assuming {dst_crs}",
-                    UserWarning
-                )
+                # warnings.warn(
+                #     f"{raw_env_tif} has no CRS—assuming {dst_crs}",
+                #     UserWarning
+                # )
                 src_crs = dst_crs
             else:
                 src_crs = src.crs
@@ -867,10 +867,10 @@ class RasterHelper:
             src_nodata = src.nodata
             # if the source CRS is missing, warn and assume reference CRS
             if src.crs is None:
-                warnings.warn(
-                    f"{src_path} has no CRS—assuming {dst_crs}",
-                    UserWarning
-                )
+                # warnings.warn(
+                #     f"{src_path} has no CRS—assuming {dst_crs}",
+                #     UserWarning
+                # )
                 src_crs = dst_crs
             else:
                 src_crs = src.crs
