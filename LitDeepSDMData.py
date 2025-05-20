@@ -66,7 +66,7 @@ class LitDeepSDMData(pl.LightningDataModule):
                 else:
                     img_norm = img
                 date_env_list.append(img_norm)
-            env_tensor_list.append(torch.stack(date_env_list))
+            env_tensor_list.append(torch.cat(date_env_list)[None, ])
         env_stack['tensor'] = torch.cat(env_tensor_list)  # env_stack['tensor'].shape = (len(stage_date_list), len(env_list), height, width)
 
         return env_stack
