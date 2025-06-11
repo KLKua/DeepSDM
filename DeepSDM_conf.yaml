@@ -78,7 +78,7 @@ temporal_conf:
 
 
 # data preparation configurations
-file_make_extent: ./workspace/extent_binary_japan.tif
+file_make_extent: ./workspace/extent_binaryJapKor.tif
 gbif_occurrence_csv: ./raw/gbif_1000monitoring_merged.csv
 
 # environmental factors configurations
@@ -144,7 +144,10 @@ env_raw_conf:
     - env_out_template: PDSI_[YEAR]_[MONTH].tif
       filename_template: TerraClimate_PDSI_[YEAR]_[MONTH].tif
       raw_env_dir: ./raw/env/TerraClimate/PDSI
-
+  elev:
+    - env_out_template: elev.tif
+      filename_template: wc2.1_30s_elev.tif
+      raw_env_dir: ./raw/env/elev
     
 # specific configurations of CCI landcover
 CCI_conf:
