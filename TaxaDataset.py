@@ -75,7 +75,7 @@ class TaxaDataset(Dataset):
         # torch.cuda.empty_cache()
         
         #label_stack
-        label_stack_new = label_stack['tensor'].detach().cuda(self.cuda_id)
+        label_stack_new = label_stack['tensor']
         self.label_stack = F.pad(label_stack_new,
                                  (0, (self.width_new - self.width_original), 0, (self.height_new - self.height_original)), 
                                  mode = 'constant', 
@@ -84,7 +84,7 @@ class TaxaDataset(Dataset):
         # torch.cuda.empty_cache()
         
         #k2
-        k2_stack_new = k2_stack['tensor'].detach().cuda(self.cuda_id)
+        k2_stack_new = k2_stack['tensor']
         self.k2_stack = F.pad(k2_stack_new,
                               (0, (self.width_new - self.width_original), 0, (self.height_new - self.height_original)), 
                               mode = 'constant',
@@ -101,10 +101,13 @@ class TaxaDataset(Dataset):
             transforms.RandomCrop(size = (self.training_conf.subsample_height, self.training_conf.subsample_width))
         ])
 
+        self.filter_split_element()
         
     def __getitem__(self, index):
         
-        idx_species_date, idx_split = self._getidx(index)
+        # idx_species_date, idx_split = self._getidx(index)
+        pair_idx = index // self.random_stack_num
+        idx_species_date, idx_split = self.valid_pairs[pair_idx]
         height_start, height_end, width_start, width_end = self._getextent(idx_split)
         
         # embeddings
@@ -136,7 +139,7 @@ class TaxaDataset(Dataset):
         return [inputs_transform, embeddings], labels_transform, k2_transform, species, date
 
     def __len__(self):
-        return len(self.species_date_list) * sum((self.split.view(-1) == self.trainorval) & (self.extent_split.view(-1) == 1)) * self.random_stack_num
+        return len(self.valid_pairs) * self.random_stack_num
     
     
     def _getidx(self, index):
@@ -151,3 +154,34 @@ class TaxaDataset(Dataset):
         width_start = self.split_element[idx_split][2]
         width_end = self.split_element[idx_split][3]
         return height_start, height_end, width_start, width_end
+
+    # def filter_split_element(self):
+    #     self.valid_pairs = []          # [(idx_species_date, idx_split), ...]
+    #     for split_idx, (h0, h1, w0, w1) in enumerate(self.split_element):
+    #         # 取出這個 split 區塊的所有物種日期 label
+    #         patch = self.label_stack[:, h0:h1, w0:w1]
+    #         # 查看每個 species_date 是否至少有一個非零像素
+    #         non_zero = patch.flatten(1).any(dim=1)    # shape = (num_species_date,)
+    #         for sp_idx, has_label in enumerate(non_zero.tolist()):
+    #             if has_label:                         # 至少一個標籤≠0
+    #                 self.valid_pairs.append((sp_idx, split_idx))
+
+                    
+    def filter_split_element(self):
+        self.valid_pairs = []          # [(idx_species_date, idx_split), ...]
+        # 建立 species_date 對應的日期索引對照表，方便查詢
+        date_to_idx = {d: i for i, d in enumerate(self.k2_stack_date)}
+        
+        for split_idx, (h0, h1, w0, w1) in enumerate(self.split_element):
+            # 先取出這個 split 範圍的 k2 所有日期資料 (num_date, H, W)
+            k2_patch = self.k2_stack[:, h0:h1, w0:w1]
+            # 針對每個 species_date
+            for sp_idx, date in enumerate(self.date_list):
+                if date not in date_to_idx:
+                    continue  # 防止找不到日期索引
+                
+                idx_date = date_to_idx[date]
+                k2_subpatch = k2_patch[idx_date]   # (H, W)
+                # 判斷 k2_subpatch 是否有 > 0
+                if (k2_subpatch > 0).any():
+                    self.valid_pairs.append((sp_idx, split_idx))
