@@ -5,8 +5,6 @@ import json
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import rasterio
-# from osgeo import gdal
-# from osgeo import gdalconst
 import cv2
 from matplotlib import pyplot as plt
 import re
@@ -100,11 +98,14 @@ class RasterHelper:
                 src_crs=src.crs,
                 dst_transform=dst_transform,
                 dst_crs=src.crs,
-                resampling=Resampling.bilinear
+                resampling=Resampling.bilinear, 
+                src_nodata=src.nodata, 
+                dst_nodata=dst.nodata
             )
         # Binarize
         with rasterio.open(med_tif) as src:
             arr = src.read(1)
+            arr = np.where(arr == src.nodata, 0, 1)
             bin_arr = arr.astype('int16')
             bin_profile = src.profile.copy()
             bin_profile.update({'dtype':'int16'})
@@ -423,7 +424,7 @@ class RasterHelper:
         height, width = filled.shape
         fill_mask = np.zeros((height + 2, width + 2), np.uint8)
         # Perform flood-fill from the specified seed point
-        cv2.floodFill(filled, fill_mask, (1559, 0), 255)
+        cv2.floodFill(filled, fill_mask, (0, 0), 255)
         # Invert flood-filled result to get non-connected background
         inv_filled = cv2.bitwise_not(filled)
         # Combine original mask and inverted flood-fill to restore full mask
