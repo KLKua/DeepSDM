@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import time
 from sklearn.metrics import pairwise_distances
+import csv
 
 class CooccurrenceHelper():
     def __init__ (self,
@@ -70,12 +71,15 @@ class CooccurrenceHelper():
                                            'decimalLongitude',
                                            'day',
                                            'month',
-                                           'year'],
+                                           'year', 
+                                           'coordinateUncertaintyInMeters', 
+                                           'coordinatePrecision'],
                                        nrows=nrows,
+                                       quoting=csv.QUOTE_NONE
                                       )
         
         # drop na values
-        species_filter = self.species_raw.dropna().reset_index(drop = True)
+        species_filter = self.species_raw.dropna(subset = ['species', 'decimalLatitude', 'decimalLongitude', 'day', 'month', 'year'], how = 'any').reset_index(drop = True)
 
         # filter species 
         # change species name
@@ -95,7 +99,17 @@ class CooccurrenceHelper():
         species_filter = species_filter[(species_filter['daysincebegin'].values >= self.day_first) & (species_filter['daysincebegin'].values <= self.day_last)].reset_index(drop = True)
         
         species_filter = species_filter.query('(decimalLatitude >= @self.y_start) & (decimalLatitude < @self.y_end) & (decimalLongitude >= @self.x_start) & (decimalLongitude < @self.x_end)').reset_index(drop=True)
-        
+
+        # filter records by coordinate uncertainty (1000m)
+        species_filter = species_filter[~(species_filter.coordinateUncertaintyInMeters > 1000)].reset_index(drop=True)
+
+        # filter records by coordinate precision (0.008333333)
+        species_filter = species_filter[~(species_filter.coordinatePrecision > 0.008333333)].reset_index(drop=True)
+
+        # remove duplicate records by date and time
+        cols_key = ["species", "decimalLatitude", "decimalLongitude", "year", "month", "day"]
+        species_filter = species_filter.drop_duplicates(subset=cols_key, keep="first").reset_index(drop=True)
+
         # save filtered csv
         species_filter.to_csv(os.path.join(self.occurrence_dir, 'species_occurrence_filter.csv'), index = None)
         print(f"File: {os.path.join(self.occurrence_dir, 'species_occurrence_filter.csv')} saved.")
