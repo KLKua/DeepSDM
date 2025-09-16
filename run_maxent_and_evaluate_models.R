@@ -15,8 +15,8 @@ if (length(args) == 0) {
   stop("At least one argument must be supplied (input file).n", call. = FALSE)
 }
 
-run_id <- "e52c8ac9a3e24c75ac871f63bbdea060"     # Unique identifier for this run
-exp_id <- "115656750127464383"                  # Experiment ID
+run_id <- "144fa175d5d1428cb9b434cd1a0024f8"     # Unique identifier for this run
+exp_id <- "625518819310735286"                  # Experiment ID
 
 # Prepare base directories for the current run
 dir_base_run_id <- file.path("predicts_maxent", run_id)
@@ -99,14 +99,15 @@ df_all_all <- data.frame(
 color <- c("#fff5eb", "#fee6ce", "#fdd0a2", "#fdae6b", "#fd8d3c", "#f16913", "#d94801", "#a63603", "#7f2704")
 
 # Load and preprocess environmental layers for training
-env_all <- load_env_allmonth(env_list, env_info, date_list_train, DeepSDM_conf)
+# env_all <- load_env_allmonth(env_list, env_info, date_list_train, DeepSDM_conf)
 
 # Read the starting index from command line
 r_start <- as.numeric(args[1])
-r_end <- r_start + 2
+r_end <- r_start + 4
 
 # Loop through subset of species from r_start to r_end
 for (species in species_list[r_start:min(r_end, length(species_list))]) {
+  # species <- 'Yuhina_brunneiceps'
   # Create directories for outputs specific to this species
   dir_run_id_png_sp <- file.path(dir_run_id_png, species)
   create_folder(dir_run_id_png_sp)
@@ -126,57 +127,34 @@ for (species in species_list[r_start:min(r_end, length(species_list))]) {
     message("Skipping this iteration due to an error.")
     next
   }
-
   # Reset global variables for storing metrics
   set_default_variable_all()
 
   # Check if "all" predictions exist for this species
-  maxent_all_all_exists <- FALSE
-  maxent_h5_path <- file.path(dir_run_id_h5_sp, sprintf("%s.h5", species))
-  maxent_all_all_exists <- check_dataset_in_h5(maxent_h5_path, "all")
+  # 在物種迴圈一開始先準備模型
+  model_ready <- FALSE
+  model_rdata <- file.path(dir_maxent_model, sprintf("%s_all.RData", species))
 
-  if (!maxent_all_all_exists) {
-    # Train a Maxent model using all-month data
-    xm_all <- try(maxent(x = env_all, p = xy_p_all_trainsplit, a = xy_pa_all_sample_trainsplit), silent = TRUE)
-    save(xm_all, file = file.path(dir_maxent_model, sprintf("%s_all.RData", species)))
-    if (!is.character(xm_all)) {
+
+  if (file.exists(model_rdata)) {
+    load(model_rdata)                 # 讀入 xm_all
+    model_ready <- exists("xm_all")
+  } else {
+    prep     <- build_maxent_training_df(date_list = date_list_train)
+    train_df <- prep$train_df
+    p_vec    <- prep$p_vec
+    xm_all   <- try(maxent(x = train_df, p = p_vec), silent = TRUE)
+    if (!inherits(xm_all, "try-error")) {
+      save(xm_all, file = model_rdata)
       write.csv(
         xm_all@results,
         file.path(dir_run_id_env_contribution, sprintf("%s_env_contribution_maxentall.csv", species))
       )
-      # Generate predictions for the entire region
-      maxent_all_all <- predict_maxent(env_all, xm_all)
-      maxent_all_all_exists <- TRUE
-
-      # Save plot & data
-      plot_result(
-        species,
-        maxent_all_all,
-        extent_binary,
-        xy_p_all,
-        "maxent_all_all",
-        dir_run_id_png_sp,
-        dir_run_id_h5_sp,
-        run_id
-      )
-
-      # Compute AUC metrics
-      maxent_all_all_train <- calculate_roc(maxent_all_all, xy_p_all_trainsplit, xy_pa_all_sample_trainsplit)
-      maxent_all_all_val <- calculate_roc(maxent_all_all, xy_p_all_valsplit, xy_pa_all_sample_valsplit)
-      maxent_all_all_all <- calculate_roc(maxent_all_all, xy_p_all, xy_pa_all_sample)
+      model_ready <- TRUE
+    } else {
+      message("Maxent training failed for species: ", species)
+      next
     }
-  } else {
-    # If already exists, load from HDF5
-    maxent_all_all <- h5dataset_to_raster(maxent_h5_path, "all")
-    maxent_all_all_exists <- TRUE
-
-    # Load saved model object
-    load(file.path(dir_maxent_model, sprintf("%s_all.RData", species)))
-
-    # Compute AUC metrics
-    maxent_all_all_train <- calculate_roc(maxent_all_all, xy_p_all_trainsplit, xy_pa_all_sample_trainsplit)
-    maxent_all_all_val <- calculate_roc(maxent_all_all, xy_p_all_valsplit, xy_pa_all_sample_valsplit)
-    maxent_all_all_all <- calculate_roc(maxent_all_all, xy_p_all, xy_pa_all_sample)
   }
 
   # Store "all-month" metrics
@@ -199,7 +177,10 @@ for (species in species_list[r_start:min(r_end, length(species_list))]) {
     set_default_variable()
 
     maxent_all_month_exists <- FALSE
-    if (maxent_all_all_exists) {
+    # Check if predictions for this date exist in the HDF5
+    maxent_h5_path <- file.path(dir_run_id_h5_sp, sprintf("%s.h5", species))
+    maxent_all_month_exists <- check_dataset_in_h5(maxent_h5_path, date)      
+    if (model_ready) {
       # Generate presence/absence for this date
       generate_points(num_pa = "num_p")
       set_default_variable()
