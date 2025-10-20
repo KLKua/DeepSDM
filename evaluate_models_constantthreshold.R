@@ -15,8 +15,8 @@ if (length(args) == 0) {
   stop("At least one argument must be supplied (input file).n", call. = FALSE)
 }
 
-run_id <- "e52c8ac9a3e24c75ac871f63bbdea060"     # Unique ID for this run
-exp_id <- "115656750127464383"                  # Experiment ID
+run_id <- "144fa175d5d1428cb9b434cd1a0024f8"     # Unique ID for this run
+exp_id <- "625518819310735286"                  # Experiment ID
 
 # Base directories
 dir_base_run_id <- file.path("predicts_maxent", run_id)
@@ -75,7 +75,7 @@ df_indi <- data.frame(
 
 # Parse command-line argument for species range
 r_start <- as.numeric(args[1])
-r_end <- r_start + 2
+r_end <- r_start + 4
 
 # Loop over the species subset
 for (species in species_list[r_start:min(r_end, length(species_list))]) {
