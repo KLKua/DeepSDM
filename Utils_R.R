@@ -383,9 +383,9 @@ log_binary <- function(
     h5_file_path <- file.path(dir_run_id_h5_binary_sp, file_name)
     h5_file <- H5File$new(h5_file_path, mode = "a")
 
-    if (date %in% h5_file$ls()$name) {
-      h5_file[[date]]$delete()
-    }
+  if (h5_file$exists(date)) {
+    h5_file$link_delete(date)
+  }
     h5attr(h5_file, "crs") <- as.character(raster::crs(extent_binary))
     extent_vals <- extent(extent_binary)
     xres <- res(extent_binary)[1]
@@ -468,6 +468,7 @@ build_maxent_training_df <- function(date_list,
     dplyr::bind_rows(lapply(dates, function(dt) {
       files <- sapply(vars, function(v) info$info[[v]][[dt]]$tif_span_avg)
       stk   <- raster::stack(files); names(stk) <- vars
+      stk   <- raster::mask(stk, train_mask)        # ★ 只保留 train 區域       
       # 標準化（同 A）
       for (v in vars[!vars %in% DeepSDM_conf$training_conf$non_normalize_env_list]) {
         stk[[v]] <- (stk[[v]] - info$info[[v]]$mean) / info$info[[v]]$sd
@@ -488,6 +489,7 @@ build_maxent_training_df <- function(date_list,
         if (length(dim(mat)) == 2) mat <- t(mat)             # 與 h5dataset_to_raster 一致的轉置 :contentReference[oaicite:8]{index=8}
         ras <- raster::raster(template); raster::values(ras) <- as.vector(mat)
         cells <- raster::Which(ras > 0, cells = TRUE)        # 用 >0 避免只抓 ==1 的侷限 :contentReference[oaicite:9]{index=9}
+        cells <- intersect(cells, i_trainsplit)       # ★ 僅 train 區
         if (!length(cells)) return(NULL)
         xy <- raster::xyFromCell(template, cells)
         data.frame(x = xy[,1], y = xy[,2], date = dt)        # 用 date_list 的字串，與環境表一致 :contentReference[oaicite:10]{index=10}
