@@ -2,7 +2,7 @@
 # This script includes a PlotUtlis class and a Beta regression implementation.
 # ==================================================================================
 
-import os
+import os, traceback
 import yaml
 import rasterio
 import json
@@ -14,7 +14,7 @@ import matplotlib as mpl
 from joblib import Parallel, delayed
 import h5py
 import feather
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from scipy.spatial.distance import mahalanobis
 from scipy.stats import spearmanr, ttest_rel
 import glob
@@ -46,8 +46,8 @@ class PlotUtlis():
         self.deepsdm_h5_path = os.path.join(self.predicts_path, 'h5', '[SPECIES]', '[SPECIES].h5')
         self.maxent_h5_path = os.path.join(self.predicts_maxent_path, 'h5', 'all', '[SPECIES]', '[SPECIES].h5')
         self.attention_h5_path = os.path.join(self.predicts_path, 'attention', '[SPECIES]', '[SPECIES]_[DATE]_attention.h5')
-        self.traitdataset_taxon_path = os.path.join('dwca-trait_454-v1.68', 'taxon.txt')
-        self.traitdataset_mesurement_path = os.path.join('dwca-trait_454-v1.68', 'measurementorfacts.txt')
+        self.traitdataset_taxon_path = os.path.join('raw', 'dwca-trait_454-v1.68', 'taxon.txt')
+        self.traitdataset_mesurement_path = os.path.join('raw', 'dwca-trait_454-v1.68', 'measurementorfacts.txt')
         self.performance_indicator_multithreshold = os.path.join(self.predicts_maxent_path, 'model_performance_diffthreshold*.csv')
         self.performance_indicator_singlethreshold = os.path.join(self.predicts_maxent_path, 'model_performance_constantthreshold*.csv')
 
@@ -115,7 +115,7 @@ class PlotUtlis():
         self.y_pca = 2
 
         # Define default color list
-        self.color_list = ['#4daf4a', '#984ea3', '#ff7f00']
+        self.color_list = ['#e41a1c', '#377eb8', '#4daf4a', '#ff7f00', '#984ea3', '#ffff33']
 
         # Define subfolder paths for plots
         self.plot_path = os.path.join('plots', run_id)
@@ -139,20 +139,19 @@ class PlotUtlis():
         self.extent_info_path = os.path.join(self.plot_path_nichespace, 'extent_info.yaml')
         self.plot_path_df_species = os.path.join(self.plot_path_nichespace, 'df_species', '[SPECIES].feather')
         self.plot_path_nichespace_h5 = os.path.join(self.plot_path_nichespace, 'h5', '[SPECIES].h5')
-        self.plot_path_nichespace_png_sp = os.path.join(self.plot_path_nichespace, 'png', '[SPECIES]',
-                                                        '[SPECIES]_nichespace_[SUFFIX].png')
+        self.plot_path_nichespace_png_sp = os.path.join(self.plot_path_nichespace, 'png', '[SPECIES]', '[SPECIES]_nichespace_[SUFFIX].png')
         self.df_grid_path = os.path.join(self.plot_path_nichespace, 'df_grid.feather')
         self.df_spearman_path = os.path.join(self.plot_path_nichespace, 'df_spearman.csv')
         self.cluster_labels_path = os.path.join(self.plot_path_nichespace_clustering, 'cluster_labels.yaml')
         self.cluster_avg_nichespace_path = os.path.join(self.plot_path_nichespace_clustering, 'cluster_avg_nichespace.yaml')
-        self.df_nichespace_center_coordinate_path = os.path.join(self.plot_path_nichespace_clustering,
-                                                                 'nichespecies_center_coordinate.csv')
+        self.df_nichespace_center_coordinate_path = os.path.join(self.plot_path_nichespace_clustering, 'nichespecies_center_coordinate.csv')
         self.df_spearman_ecogeo_path = os.path.join(self.plot_path_cph, 'df_spearman_ecogeo.csv')
         self.niche_beta_params_path = os.path.join(self.plot_path_cph, 'niche_beta_params.json')
         self.geographical_beta_params_path = os.path.join(self.plot_path_cph, 'geographical_beta_params.json')
         self.beta_cluster_result_path = os.path.join(self.plot_path_cph, '[CENTER_TYPE]_cluster_[CLUSTER]_beta_result.txt')
         self.niche_beta_cluster_params_path = os.path.join(self.plot_path_cph, 'niche_beta_cluster_params.json')
         self.geographical_beta_cluster_params_path = os.path.join(self.plot_path_cph, 'geographical_beta_cluster_params.json')
+        self.label_to_color_path = os.path.join(self.plot_path_nichespace_clustering, 'label_to_color.json')
 
         # Load any existing files if they are present
         self.load_existing_files()
@@ -211,7 +210,7 @@ class PlotUtlis():
         """
 
         def process_species(species, env_list, date_list_predict):
-            sp_attention = np.zeros([len(env_list), 560, 336], dtype=np.float32)
+            sp_attention = np.zeros([len(env_list), self.height, self.width], dtype=np.float32)
             for date in date_list_predict:
                 with h5py.File(self.attention_h5_path.replace('[SPECIES]', species).replace('[DATE]', date), 'r') as hf:
                     for i_env, env in enumerate(env_list):
@@ -339,35 +338,54 @@ class PlotUtlis():
             series_dict = {}
 
             maxent_h5_species_path = self.maxent_h5_path.replace('[SPECIES]', species)
-            if os.path.exists(maxent_h5_species_path):
-                with h5py.File(maxent_h5_species_path, 'r') as hf:
-                    maxent_all_all_value = (hf['all'][:])[self.extent_binary == 1].flatten()
-                    series_dict[f'maxent_all_all_{species}'] = maxent_all_all_value
+            # if os.path.exists(maxent_h5_species_path):
+            #     with h5py.File(maxent_h5_species_path, 'r') as hf:
+            #         maxent_all_all_value = (hf['all'][:])[self.extent_binary == 1].flatten()
+            #         series_dict[f'maxent_all_all_{species}'] = maxent_all_all_value
 
             for date in self.date_list_predict:
                 deepsdm_h5_species_path = self.deepsdm_h5_path.replace('[SPECIES]', species)
                 if os.path.exists(deepsdm_h5_species_path):
+                    # print(f'{deepsdm_h5_species_path} exists. ')
                     with h5py.File(deepsdm_h5_species_path, 'r') as hf:
                         deepsdm_all_month_value = (hf[date][:])[self.extent_binary == 1].flatten()
                         series_dict[f'deepsdm_all_month_{species}_{date}'] = deepsdm_all_month_value
-
+                        # print(series_dict)
+                else:
+                    print(f'{deepsdm_h5_species_path} does not exist. ')
                 if os.path.exists(maxent_h5_species_path):
                     with h5py.File(maxent_h5_species_path, 'r') as hf:
                         maxent_all_month_value = (hf[date][:])[self.extent_binary == 1].flatten()
                         series_dict[f'maxent_all_month_{species}_{date}'] = maxent_all_month_value
 
-                occ_path = os.path.join(self.sp_info['dir_base'], self.sp_info['file_name'][species][date])
+                occ_path = os.path.join(self.sp_info['dir_base'], self.sp_info['file_name'][species]['h5file_name'])
                 if os.path.exists(occ_path):
-                    with rasterio.open(occ_path, 'r') as f:
-                        occ_value = (f.read(1))[self.extent_binary == 1].flatten()
+                    with h5py.File(occ_path, 'r') as hf:
+                        occ_value = (hf[date][:][self.extent_binary == 1]).flatten()
                         series_dict[f'occ_{species}_{date}'] = occ_value.astype(int)
 
             df_species = pd.DataFrame(series_dict)
             output_path = self.plot_path_df_species.replace('[SPECIES]', species)
             feather.write_dataframe(df_species, output_path)
 
-        with ThreadPoolExecutor(max_workers=32) as executor:
-            executor.map(process_species, self.species_list_predict)
+        # 你原本的函式最後一段，僅替換這個 with-block
+        workers = min(8, (os.cpu_count() or 4))  # 適度降一點，HDF5 較穩
+        n_ok = n_err = 0
+        
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(process_species, sp): sp for sp in self.species_list_predict}
+            for fut in as_completed(futures):
+                sp = futures[fut]
+                try:
+                    fut.result()  # ★ 關鍵：把 thread 內的例外拋回主執行緒
+                    print(f"[ok] {sp}")
+                    n_ok += 1
+                except Exception as e:
+                    n_err += 1
+                    print(f"[error] {sp}: {e}")
+                    traceback.print_exc()
+        
+        print(f"summary: {n_ok} ok, {n_err} error")
 
     # For Fig4
     def set_pc_bin_extent_info(self, df_env_pca):
@@ -711,15 +729,19 @@ class PlotUtlis():
         return indicator_merged
 
     # For Fig5
-    def get_deepsdm_nichespace(self, suffix='max'):
+    def get_deepsdm_nichespace(self, species_exclude = [], suffix='max'):
         """
         Retrieve the DeepSDM niche space from the stored HDF5 files for
         all species, returning both flattened arrays of non-zero values and
         2D (non-flattened) arrays.
         """
+        if len(species_exclude) > 0:
+            self.species_list_exclude = [sp for sp in self.species_list_predict if sp not in species_exclude]
+        else:
+            self.species_list_exclude = self.species_list_predict
         nichespace_deepsdm_all = []
         nichespace_deepsdm_all_nonflatten = []
-        for species in self.species_list_predict:
+        for species in self.species_list_exclude:
             h5_path = self.plot_path_nichespace_h5.replace('[SPECIES]', species)
             with h5py.File(h5_path, 'r') as hf:
                 deepsdm_dataset_name = f'deepsdm_all_month_{suffix}'
@@ -794,30 +816,49 @@ class PlotUtlis():
             center = np.array([center_x, center_y])
             center_allspecies.append(center)
 
-        df_center = pd.DataFrame(np.vstack(center_allspecies), index=self.species_list_predict, columns=['PC01', 'PC02'])
+        df_center = pd.DataFrame(np.vstack(center_allspecies), index=self.species_list_exclude, columns=['PC01', 'PC02'])
         df_center['cluster'] = cluster_labels
         return df_center
 
     # For Fig5
     def calculate_correlation_center_maxvariance(self, df_center):
         """
-        Determine the maximum variance direction from the covariance matrix
-        of centers and compute how environment factors correlate with that direction.
+        Find the max-variance direction of cluster centers (PC01, PC02) and compute
+        cosine similarity between each environmental factor's loading vector and that direction.
+        Cosine similarity removes the effect of vector magnitude.
         """
+        # 1) Covariance & eigen (use eigh for symmetric)
         cov_matrix = np.cov(df_center[['PC01', 'PC02']].T)
-        eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
-        max_variance_index = np.argmax(eigenvalues)
-        max_variance_direction = eigenvectors[:, max_variance_index]
-        env_factors = self.env_pca_loadings[['PC01', 'PC02']].values
-        env_correlation = env_factors @ max_variance_direction
-        env_correlation_abs = np.abs(env_correlation)
-        center_maxvarinace_slope = max_variance_direction[1] / max_variance_direction[0]
-        env_correlation_df = pd.DataFrame({
+        evals, evecs = np.linalg.eigh(cov_matrix)          # eigenvectors are orthonormal
+        max_idx = np.argmax(evals)
+        dir_vec = evecs[:, max_idx]                         # already unit-length with eigh, but we can ensure:
+        dir_vec = dir_vec / np.linalg.norm(dir_vec)
+    
+        # 2) Environmental factor loadings (each row = a factor's vector in PC space)
+        env = self.env_pca_loadings[['PC01', 'PC02']].values  # shape: (n_factors, 2)
+        row_norms = np.linalg.norm(env, axis=1, keepdims=True)
+        # avoid divide-by-zero
+        safe_norms = np.where(row_norms == 0, 1.0, row_norms)
+        env_unit = env / safe_norms
+    
+        # 3) Cosine similarity (magnitude-invariant)
+        cos_sim = env_unit @ dir_vec                         # shape: (n_factors,)
+        cos_sim_abs = np.abs(cos_sim)
+    
+        # 4) 也可提供純投影（含量級）供參考
+        projection = env @ dir_vec                           # 受向量大小影響
+    
+        # 5) 結果表
+        out = pd.DataFrame({
             "Environmental Factor": self.env_pca_loadings.index,
-            "Correlation with Max Variance Direction": env_correlation
-        })
-        env_correlation_df = env_correlation_df.reindex(env_correlation_abs.argsort()[::-1])
-        return env_correlation_df, center_maxvarinace_slope
+            "Cosine with Max-Var Direction": cos_sim,        # 範圍 [-1, 1]，不受向量長度影響
+            "Abs(Cosine)": cos_sim_abs,
+            "Signed Projection": projection                  # 受向量長度影響（若你也想看「貢獻量」）
+        }).sort_values("Abs(Cosine)", ascending=False).reset_index(drop=True)
+    
+        # 方向斜率（僅供繪圖/直覺解讀）
+        slope = dir_vec[1] / dir_vec[0] if dir_vec[0] != 0 else np.inf
+        return out, slope
 
     # For Fig5
     def get_cluster_env_values(self, cluster_labels, env_plot):
@@ -826,7 +867,7 @@ class PlotUtlis():
         """
         env_value_cluster_all = []
         for cluster in np.unique(cluster_labels):
-            species_list_cluster = np.array(self.species_list_predict)[np.array(cluster_labels) == cluster].tolist()
+            species_list_cluster = np.array(self.species_list_exclude)[np.array(cluster_labels) == cluster].tolist()
             env_value_cluster = []
             for species in species_list_cluster:
                 df_species = feather.read_dataframe(self.plot_path_df_species.replace('[SPECIES]', species))
@@ -841,7 +882,19 @@ class PlotUtlis():
             env_value_cluster = np.concatenate(env_value_cluster)
             env_value_cluster_all.append((cluster, env_value_cluster))
         return env_value_cluster_all
-
+        
+    # For Fig5
+    def align_label_to_color(self, k_optimal, cluster_labels):
+        """
+        Set the consistant combination between labels of clusters and colors
+        """
+        unique_labels = np.unique(cluster_labels)
+        assert len(unique_labels) == k_optimal
+        label_to_color = {int(lbl): self.color_list[i] for i, lbl in enumerate(unique_labels)}
+        with open(self.label_to_color_path, 'w') as f:
+            json.dump(label_to_color, f)
+        return unique_labels, label_to_color
+        
     # For Fig6
     def calculate_cph_spearman_beta(self):
         """
@@ -966,10 +1019,22 @@ class PlotUtlis():
                 "y_max": y_max_geo,
                 "epsilon": epsilon
             }
+
+        # Export the DataFrame of Spearman's correlation to CSV.
+        # Save the niche-based Beta regression parameters and the geographic-based Beta regression parameters in JSON.
+        df_spearman_ecogeo.to_csv(self.df_spearman_ecogeo_path, index = None)
+        self.df_spearman_ecogeo = df_spearman_ecogeo
+        with open(self.niche_beta_params_path, 'w') as f:
+            json.dump(ecological_fit_info, f, indent = 4)
+            self.niche_beta_params = ecological_fit_info
+        with open(self.geographical_beta_params_path, 'w') as f:
+            json.dump(geographical_fit_info, f, indent = 4)
+            self.geographical_beta_params = geographical_fit_info
+            
         return df_spearman_ecogeo, ecological_fit_info, geographical_fit_info
 
     # For Fig6
-    def calculate_cph_spearman_beta_cluster(self, n_cluster=3):
+    def calculate_cph_spearman_beta_cluster(self, species_exclude):
         """
         Compute Beta regression in geographical/niche space 
         for species grouped by cluster. Summarizes results 
@@ -978,9 +1043,19 @@ class PlotUtlis():
         ecological_fit_info = {}
         geographical_fit_info = {}
         epsilon = 1e-8
-
-        for cluster in range(1, n_cluster+1):
-            species_list_cluster = np.array(self.species_list_predict)[np.array(self.cluster_labels) == cluster]
+            
+        unique_label = np.unique(list(self.label_to_color.keys()))
+        
+        if len(species_exclude) > 0:
+            self.species_list_exclude = [sp for sp in self.species_list_predict if sp not in species_exclude]
+        else:
+            self.species_list_exclude = self.species_list_predict
+            
+        for i, lbl in enumerate(unique_label):
+            print(lbl)
+            print(type(lbl))
+            species_list_cluster = np.array(self.species_list_exclude)[np.array(self.cluster_labels) == int(lbl)]
+            print(species_list_cluster)
             df_cluster = []
             distances_all_cluster = []
             cell_values_all_cluster = []
@@ -1056,7 +1131,7 @@ class PlotUtlis():
             y_min_eco = float(np.min(y_eco))
             y_max_eco = float(np.max(y_eco))
 
-            ecological_fit_info[cluster] = {
+            ecological_fit_info[lbl] = {
                 "mu_link": "logit",
                 "phi_link": "log",
                 "params_mu": [float(intercept_mu_eco), float(slope_mu_eco)],
@@ -1068,7 +1143,7 @@ class PlotUtlis():
                 "epsilon": epsilon
             }
 
-            with open(self.beta_cluster_result_path.replace('[CENTER_TYPE]', 'Niche_center').replace('[CLUSTER]', str(cluster)), 'w') as file:
+            with open(self.beta_cluster_result_path.replace('[CENTER_TYPE]', 'Niche_center').replace('[CLUSTER]', lbl), 'w') as file:
                 file.write(result_eco.summary().as_text())
 
             x_geo = distances_all_cluster
@@ -1090,7 +1165,7 @@ class PlotUtlis():
             y_min_geo = float(np.min(y_geo))
             y_max_geo = float(np.max(y_geo))
 
-            geographical_fit_info[cluster] = {
+            geographical_fit_info[lbl] = {
                 "mu_link": "logit",
                 "phi_link": "log",
                 "params_mu": [float(intercept_mu_geo), float(slope_mu_geo)],
@@ -1102,13 +1177,20 @@ class PlotUtlis():
                 "epsilon": epsilon
             }
 
-            with open(self.beta_cluster_result_path.replace('[CENTER_TYPE]', 'Geographical_center').replace('[CLUSTER]', str(cluster)), 'w') as file:
+            with open(self.beta_cluster_result_path.replace('[CENTER_TYPE]', 'Geographical_center').replace('[CLUSTER]', lbl), 'w') as file:
                 file.write(result_geo.summary().as_text())
 
+        # Write the Beta regression results (cluster-based) for niche and geographical centers.
+        with open(self.niche_beta_cluster_params_path, 'w') as f:
+            json.dump(ecological_fit_info, f, indent = 4)
+            self.niche_beta_cluster_params = ecological_fit_info
+        with open(self.geographical_beta_cluster_params_path, 'w') as f:
+            json.dump(geographical_fit_info, f, indent = 4)
+            self.geographical_beta_cluster_params = geographical_fit_info
         return ecological_fit_info, geographical_fit_info
 
     # For Fig6
-    def plot_subplots(self, species_to_print):
+    def plot_subplots(self, species_to_print, species_exclude = []):
         """
         Generate multiple figure subplots for each species to visualize:
          1) Niche space predictions
@@ -1124,6 +1206,11 @@ class PlotUtlis():
         lons = np.array(lons)
         lats = np.array(lats)
 
+        if len(species_exclude) > 0:
+            self.species_list_exclude = [sp for sp in self.species_list_predict if sp not in species_exclude]
+        else:
+            self.species_list_exclude = self.species_list_predict
+        
         for species in species_to_print:
             img_sum = None
             with h5py.File(self.deepsdm_h5_path.replace('[SPECIES]', species), 'r') as hf:
@@ -1234,9 +1321,8 @@ class PlotUtlis():
             linear_pred = X_line @ params_mu
             mu_pred_norm = logistic(linear_pred)
             mu_pred = ((mu_pred_norm - eps) / (1 - 2*eps)) * (y_max - y_min) + y_min
-            cluster_idx = self.cluster_labels[self.species_list_predict.index(species)]
-            c_idx = cluster_idx - 1
-            ax.plot(x_line, mu_pred, color=self.color_list[c_idx], linewidth=1)
+            cluster_idx = self.cluster_labels[self.species_list_exclude.index(species)]
+            ax.plot(x_line, mu_pred, color=self.label_to_color[str(cluster_idx)], linewidth=1)
             ax.set_box_aspect(self.nichespace_cell_height / self.nichespace_cell_width)
             plot_output = os.path.join(self.plot_path_cph_subplots, 'Fig6_subplots_3', f'Fig6_subplots_3_{species}.pdf')
             plt.savefig(plot_output, dpi=500, transparent=True)
@@ -1262,9 +1348,8 @@ class PlotUtlis():
             linear_pred = X_line @ params_mu
             mu_pred_norm = logistic(linear_pred)
             mu_pred = ((mu_pred_norm - eps) / (1 - 2*eps)) * (y_max - y_min) + y_min
-            cluster_idx = self.cluster_labels[self.species_list_predict.index(species)]
-            c_idx = cluster_idx - 1
-            ax.plot(x_line, mu_pred, color=self.color_list[c_idx], linewidth=1)
+            cluster_idx = self.cluster_labels[self.species_list_exclude.index(species)]
+            ax.plot(x_line, mu_pred, color=self.label_to_color[str(cluster_idx)], linewidth=1)
             ax.set_box_aspect(self.nichespace_cell_height / self.nichespace_cell_width)
             plot_output = os.path.join(self.plot_path_cph_subplots, 'Fig6_subplots_4', f'Fig6_subplots_4_{species}.pdf')
             plt.savefig(plot_output, dpi=500, transparent=True)
@@ -1290,7 +1375,8 @@ class PlotUtlis():
         self.cluster_labels = None
         self.df_spearman_ecogeo = None
         self.df_env_corr = None
-
+        self.label_to_color = None
+        
         if os.path.exists(self.avg_elev_path):
             self.avg_elev = pd.read_csv(self.avg_elev_path)
 
@@ -1359,6 +1445,9 @@ class PlotUtlis():
         if os.path.exists(self.df_env_corr_path):
             self.df_env_corr = pd.read_csv(self.df_env_corr_path, index_col=0)
 
+        if os.path.exists(self.label_to_color_path):
+            with open(self.label_to_color_path, 'r') as f:
+                self.label_to_color = json.load(f)
 
 def create_folder(file_path):
     """
@@ -1458,11 +1547,12 @@ def convert_to_env_list_detail(env_list_original):
         'sfcWind': 'Wind speed',
         'tas': 'Temperature',
         'EVI': 'EVI',
-        'landcover_PC00': 'LandcoverPC1',
-        'landcover_PC01': 'LandcoverPC2',
-        'landcover_PC02': 'LandcoverPC3',
-        'landcover_PC03': 'LandcoverPC4',
-        'landcover_PC04': 'LandcoverPC5',
+        'landcover_PC01': 'LandcoverPC1',
+        'landcover_PC02': 'LandcoverPC2',
+        'landcover_PC03': 'LandcoverPC3',
+        'landcover_PC04': 'LandcoverPC4',
+        'landcover_PC05': 'LandcoverPC5',
+        'landcover_PC06': 'LandcoverPC6',
     }
     return [env_list_change[i] for i in env_list_original]
 
