@@ -43,6 +43,8 @@ extent_binary <- raster(DeepSDM_conf$geo_extent_file)   # 1 for land, 0 for sea
 trainval_split <- raster(file.path("mlruns", exp_id, run_id, "artifacts", "extent_binary", "partition_extent.tif"))
 i_extent <- which(values(extent_binary) == 1)           # Indices of land area
 i_trainsplit <- which(values(trainval_split) == 1)      # Indices for training partition
+train_mask <- trainval_split
+train_mask[values(train_mask) != 1] <- NA
 i_valsplit <- which(is.na(values(trainval_split)))      # Indices for validation partition
 
 # Load environmental info and species info
