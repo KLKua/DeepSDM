@@ -793,7 +793,21 @@ class RasterHelper:
 #                     ) as dst:
 #                         dst.write(rst * extent_binary, 1)
                     h5f.create_dataset(date_span, data = rst * extent_binary, compression = 'gzip', dtype = np.int16)
+                    # h5f.attrs['crs'] = extent_crs
+                    # h5f.attrs['transform'] = extent_transform
+                    crs_text = extent_crs.to_wkt() if hasattr(extent_crs, "to_wkt") else str(extent_crs)
+                    h5f.attrs.create(
+                        "crs",
+                        crs_text,
+                        dtype=h5py.string_dtype(encoding="utf-8")
+                    )
                     
+                    if hasattr(extent_transform, "to_gdal"):
+                        t_vals = np.array(extent_transform.to_gdal(), dtype=np.float64)  # (a,b,d,e,c,f)
+                    else:
+                        t_vals = np.array(tuple(extent_transform), dtype=np.float64)
+                    h5f.attrs.create("transform", t_vals)
+
                     file_name[sp]['h5file_dataset_name'][date_span] = date_span
 
                     date_s = self.time_step(date_s)
