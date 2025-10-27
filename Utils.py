@@ -102,11 +102,10 @@ class PlotUtlis():
             'sfcWind': 'Wind speed',
             'tas': 'Temperature',
             'EVI': 'EVI',
-            'landcover_PC00': 'LandcoverPC1',
-            'landcover_PC01': 'LandcoverPC2',
-            'landcover_PC02': 'LandcoverPC3',
-            'landcover_PC03': 'LandcoverPC4',
-            'landcover_PC04': 'LandcoverPC5',
+            'landcover_PC01': 'LandcoverPC1',
+            'landcover_PC02': 'LandcoverPC2',
+            'landcover_PC03': 'LandcoverPC3',
+            'landcover_PC04': 'LandcoverPC4',
         }
         self.env_list_detail = [env_list_change[i] for i in self.env_list]
 
