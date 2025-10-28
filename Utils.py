@@ -22,6 +22,8 @@ from rasterio.transform import xy
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.model_selection import StratifiedKFold, cross_val_score
 
 class PlotUtlis():
     """
@@ -820,6 +822,39 @@ class PlotUtlis():
         return df_center
 
     # For Fig5
+    def calculate_nichecenter_cluster_lda(self, SEED = 42):
+        
+        L = self.env_pca_loadings[['PC01', 'PC02']].to_numpy(float)
+        mu = self.df_nichespace_center_coordinate[['PC01', 'PC02']].to_numpy(float)
+        labels = self.df_nichespace_center_coordinate['cluster'].astype(str).to_numpy()
+        species = self.df_nichespace_center_coordinate.index.astype(str).to_numpy()
+        
+        # fit & compute
+        Imp, Uhat, w, L2 = lda_pcspace_importance(mu, labels, self.env_pca_loadings, use_cosine_only=False)
+        order = np.argsort(-Imp)
+        res_pc = pd.DataFrame({
+            'variable': self.env_pca_loadings.index.values[order],
+            'importance_pc': Imp[order],
+            'loading_PC1': self.env_pca_loadings.iloc[order]['PC01'].values,
+            'loading_PC2': self.env_pca_loadings.iloc[order]['PC02'].values
+        })
+        Uhat_df = pd.DataFrame(Uhat, index=['PC01', 'PC02'],
+                       columns=[f'LD{i+1}' for i in range(Uhat.shape[1])])
+        # Projection of environmental factors on LDA space: 
+        P = (L2 @ Uhat)  # (p, q)
+        for j in range(P.shape[1]):
+            res_pc[f'proj_on_LD{j+1}'] = P[order, j]
+        
+        # Stratified K-fold cross-validation (external evaluation)
+        counts = pd.Series(labels).value_counts(); min_count = int(counts.min())
+        K = max(2, min(5, min_count))
+        cv = StratifiedKFold(n_splits=K, shuffle=True, random_state=SEED)
+        scores = cross_val_score(LinearDiscriminantAnalysis(solver='svd'), mu, labels, cv=cv)
+        print(f'Stratified {K}-fold CV accuracy: {scores.mean():.3f} (± {scores.std():.3f})')
+
+        return res_pc, Uhat_df, w, scores
+        
+    # For Fig5
     def calculate_correlation_center_maxvariance(self, df_center):
         """
         Find the max-variance direction of cluster centers (PC01, PC02) and compute
@@ -1375,6 +1410,7 @@ class PlotUtlis():
         self.df_spearman_ecogeo = None
         self.df_env_corr = None
         self.label_to_color = None
+        self.df_nichespace_center_coordinate = None
         
         if os.path.exists(self.avg_elev_path):
             self.avg_elev = pd.read_csv(self.avg_elev_path)
@@ -1418,6 +1454,9 @@ class PlotUtlis():
         if os.path.exists(self.env_pca_loadings_path):
             self.env_pca_loadings = pd.read_csv(self.env_pca_loadings_path, index_col=0)
 
+        if os.path.exists(self.df_nichespace_center_coordinate_path):
+            self.df_nichespace_center_coordinate = pd.read_csv(self.df_nichespace_center_coordinate_path, index_col = 0)
+            
         if os.path.exists(self.cluster_labels_path):
             with open(self.cluster_labels_path, 'r') as f:
                 self.cluster_labels = yaml.load(f, Loader=yaml.FullLoader)
@@ -1447,6 +1486,7 @@ class PlotUtlis():
         if os.path.exists(self.label_to_color_path):
             with open(self.label_to_color_path, 'r') as f:
                 self.label_to_color = json.load(f)
+
 
 def create_folder(file_path):
     """
@@ -1639,6 +1679,44 @@ def logistic(z):
     """Logistic function commonly used in Beta regression link."""
     return 1 / (1 + np.exp(-z))
 
+
+def lda_pcspace_importance(mu, y, load_df, use_cosine_only=False):
+    
+    lda = LinearDiscriminantAnalysis(solver='svd')
+    lda.fit(mu, y)
+    U = np.asarray(lda.scalings_)          # (2, q)
+    if U.ndim == 1:
+        U = U.reshape(-1, 1)
+
+    # Axis explanatory ratio (use average if not available)
+    if getattr(lda, 'explained_variance_ratio_', None) is not None:
+        w = np.asarray(lda.explained_variance_ratio_, float)
+        w = w / w.sum()
+    else:
+        w = np.ones(U.shape[1]) / U.shape[1]
+
+    # Normalize LDA axes to unit length
+    Uhat = U / (np.linalg.norm(U, axis=0, keepdims=True) + 1e-12)  # (2, q)
+
+    # Extract variable loadings on the PC plane (p×2)
+    L2 = load_df[['PC01', 'PC02']].to_numpy(dtype=float)         # (p, 2)
+
+    # Calculate importance (entirely within the PC plane)
+    if use_cosine_only:
+        # Directional consistency: normalize variable vectors, then compute inner product with each LDA axis
+        L2_unit = L2 / (np.linalg.norm(L2, axis=1, keepdims=True) + 1e-12)   # (p,2)
+        P = L2_unit @ Uhat          # (p, q) = cos(theta)
+        Imp_raw = (P**2) @ w        # sum_l w_l * cos^2
+    else:
+        # Projection energy including vector length: directly project onto LDA axes
+        P = L2 @ Uhat               # (p, q) = projection length
+        Imp_raw = (P**2) @ w        # sum_l w_l * projection^2
+
+    # Normalize (so that the sum equals 1)
+    Imp = Imp_raw / (Imp_raw.sum() + 1e-12)
+    return Imp, Uhat, w, L2
+
+    
 # ==================================================================================
 # Beta Regression Implementation
 # ==================================================================================
