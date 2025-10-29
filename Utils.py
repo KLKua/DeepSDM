@@ -16,7 +16,7 @@ import h5py
 import feather
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from scipy.spatial.distance import mahalanobis
-from scipy.stats import spearmanr, ttest_rel
+from scipy.stats import spearmanr, ttest_rel, kruskal
 import glob
 from rasterio.transform import xy
 import statsmodels.api as sm
@@ -24,6 +24,9 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.model_selection import StratifiedKFold, cross_val_score
+import itertools
+import matplotlib.patches as patches
+from matplotlib.colors import ListedColormap
 
 class PlotUtlis():
     """
@@ -153,7 +156,8 @@ class PlotUtlis():
         self.niche_beta_cluster_params_path = os.path.join(self.plot_path_cph, 'niche_beta_cluster_params.json')
         self.geographical_beta_cluster_params_path = os.path.join(self.plot_path_cph, 'geographical_beta_cluster_params.json')
         self.label_to_color_path = os.path.join(self.plot_path_nichespace_clustering, 'label_to_color.json')
-
+        self.species_cluster_env_values_stats_path = os.path.join(self.plot_path_suppl, "cluster_env_values_stats.json")
+        
         # Load any existing files if they are present
         self.load_existing_files()
 
@@ -1391,6 +1395,228 @@ class PlotUtlis():
             plt.savefig(plot_output, dpi=2000, transparent=True)
             plt.show()
 
+    # For FigSupplementary
+    def species_occ_env_violinplot(self, env_plot, species_exclude = []):
+        # function cell performs the Kruskal–Wallis test of different environmental factors across four clusters.
+        # Each species contributes one median value (calculated across all occurrence pixels).
+        # The violin plot shows distributions per cluster (species-level medians) WITHOUT significance annotations.
+        # Results (including species names and medians) are saved to a JSON file, organized by environmental variable.
+    
+        # exclude species not needed
+        if len(species_exclude) > 0:
+            self.species_list_exclude = [sp for sp in self.species_list_predict if sp not in species_exclude]
+        else:
+            self.species_list_exclude = self.species_list_predict
+            
+        # Initialize containers
+        cluster_env_values = {1: [], 2: [], 3: [], 4: []}
+        cluster_species_names = {1: [], 2: [], 3: [], 4: []}
+        
+        # ---- Collect species-level median values ----
+        for cluster in [1, 2, 3, 4]:
+            # Get the species belonging to the current cluster
+            species_list_cluster = np.array(self.species_list_exclude)[np.array(self.cluster_labels) == cluster].tolist()
+            
+            for species in species_list_cluster:
+                # Read species occurrence data
+                df_species = feather.read_dataframe(self.plot_path_df_species.replace('[SPECIES]', species))
+        
+                # Extract occurrence and corresponding environmental values
+                occ_value = df_species[sorted([key for key in df_species.keys() if key.startswith('occ')])].values.flatten()
+                env_value = self.df_env_pca[sorted([key for key in self.df_env_pca.keys() if key.startswith(env_plot)])].values.flatten()
+        
+                # Remove NaN values
+                mask = ~np.isnan(occ_value) & ~np.isnan(env_value)
+                occ_value = occ_value[mask]
+                env_value = env_value[mask]
+        
+                # Select the environmental values where the species occurs
+                i_threshold = np.where(occ_value == 1)[0]
+                if i_threshold.size == 0:
+                    continue
+                env_occ = env_value[i_threshold]
+        
+                # Compute the median environmental value for this species
+                sp_median = float(np.median(env_occ))
+        
+                # Store
+                cluster_env_values[cluster].append(sp_median)
+                cluster_species_names[cluster].append(species)
+        
+        # ---- Statistical analysis ----
+        H, p_kw = kruskal(cluster_env_values[1], cluster_env_values[2],
+                          cluster_env_values[3], cluster_env_values[4])
+        
+        pairwise_results = {}
+        pairs = list(itertools.combinations([1, 2, 3, 4], 2))
+        for (a, b) in pairs:
+            stat, p = kruskal(cluster_env_values[a], cluster_env_values[b])
+            pairwise_results[f'Cluster {a} vs Cluster {b}'] = (stat, p)
+        
+        # ---- Visualization: Violin plot WITHOUT significance annotations ----
+        fig, ax = plt.subplots(figsize=mm2inch(50, 50), constrained_layout=True)
+        
+        data_for_violin = [cluster_env_values[1], cluster_env_values[2],
+                           cluster_env_values[3], cluster_env_values[4]]
+        
+        # Define quantile lines (25% and 75%) for each cluster
+        quantiles_list = []
+        for vals in data_for_violin:
+            if len(vals) >= 4:
+                q = [0.25, 0.75]
+            else:
+                q = []
+            quantiles_list.append(q)
+        
+        # Violin plot of species-level medians
+        violin = ax.violinplot(
+            data_for_violin,
+            showmeans=False, showmedians=True, showextrema=True, widths=0.6,
+            quantiles=quantiles_list
+        )
+        
+        # Color customization
+        for i, body in enumerate(violin['bodies']):
+            body.set_facecolor(self.color_list[i % len(self.color_list)])
+            body.set_alpha(0.7)
+            body.set_edgecolor('black')
+            body.set_linewidth(0.5)
+        
+        # Style adjustment
+        for key in ['cmaxes', 'cmins', 'cbars', 'cmedians', 'cquantiles']:
+            if key in violin:
+                c_element = violin[key]
+                c_element.set_linewidth(0.5)
+                c_element.set_color('black')
+        
+        ax.set_xticks([1, 2, 3, 4])
+        ax.set_xticklabels(['Cluster 1', 'Cluster 2', 'Cluster 3', 'Cluster 4'])
+        ax.set_ylabel(convert_to_env_list_detail([env_plot])[0])
+        
+        plot_output = os.path.join(self.plot_path_suppl, f'FigS2_{env_plot}_violin_species_median_4clusters.pdf')
+        plt.savefig(plot_output, dpi=500, transparent=True)
+        plt.show()
+        
+        print(f"Overall Kruskal–Wallis (4 clusters): H={H:.3f}, p={p_kw:.3g}")
+        print("Pairwise results (species-level medians):")
+        for k, (stat, p) in pairwise_results.items():
+            print(f"  {k}: H={stat:.3f}, p={p:.3g}")
+        
+        # ---- Save results to JSON ----
+        res_dict = {
+            env_plot: {
+                "data": {
+                    str(k): {
+                        "species": cluster_species_names[k],
+                        "medians": [float(x) for x in cluster_env_values[k]]
+                    } for k in [1, 2, 3, 4]
+                },
+                "stats": {
+                    "kruskal": {"H": float(H), "p": float(p_kw)},
+                    "pairwise": {
+                        f"{a}-{b}": {
+                            "H": float(pairwise_results[f'Cluster {a} vs Cluster {b}'][0]),
+                            "p": float(pairwise_results[f'Cluster {a} vs Cluster {b}'][1])
+                        } for (a, b) in pairs
+                    },
+                    "n_per_cluster": {str(k): int(len(cluster_env_values[k])) for k in [1, 2, 3, 4]}
+                }
+            }
+        }
+        # Append or create
+        if os.path.exists(self.species_cluster_env_values_stats_path):
+            with open(self.species_cluster_env_values_stats_path, "r", encoding="utf-8") as f:
+                try:
+                    existing = json.load(f)
+                    if not isinstance(existing, dict):
+                        existing = {}
+                except json.JSONDecodeError:
+                    existing = {}
+        else:
+            existing = {}
+        
+        # Insert or update current env_plot
+        existing[env_plot] = res_dict[env_plot]
+        
+        # Save back
+        self.species_cluster_env_values_stats = existing
+        with open(self.species_cluster_env_values_stats_path, "w", encoding="utf-8") as f:
+            json.dump(existing, f, indent=2, ensure_ascii=False)
+        
+        print(f"[Saved] Updated results for '{env_plot}' to: {self.species_cluster_env_values_stats_path}")
+
+        # ---- Additional figure: Lower-triangle raster for pairwise significance ----
+        # Display only the lower-left triangle (i > j) plus the diagonal boxes (i = j).
+        # The upper-right triangle (i < j) is hidden, and the outer frame's top/right borders are removed.        
+        n_clusters = 4
+        p_mat = np.full((n_clusters, n_clusters), np.nan, float)
+        star_mat = np.empty((n_clusters, n_clusters), dtype=object)
+        
+        # Fill the lower triangle (i > j) with p-values and stars
+        for (a, b) in pairs:
+            _, p = pairwise_results[f'Cluster {a} vs Cluster {b}']
+            i, j = a - 1, b - 1
+            # store in lower-left triangle
+            p_mat[j, i] = p
+            star_mat[j, i] = get_significance_stars(p)
+        
+        # Binary significance matrix
+        alpha = 0.05
+        sig_mat = np.zeros_like(p_mat)
+        valid = ~np.isnan(p_mat)
+        sig_mat[valid] = (p_mat[valid] < alpha).astype(float)
+        
+        # Mask the upper-right triangle (keep diagonal)
+        mask = np.triu(np.ones_like(p_mat, dtype=bool), k=1)
+        sig_masked = np.ma.array(sig_mat, mask=mask)
+        
+        cmap = ListedColormap('#00000000')
+        
+        fig2, ax2 = plt.subplots(figsize=mm2inch(30, 30), constrained_layout=True)
+        
+        # Plot only lower triangle + diagonal
+        im = ax2.imshow(sig_masked, cmap=cmap, vmin=0, vmax=1)
+        
+        # Axis setup
+        ax2.set_xticks(range(n_clusters))
+        ax2.set_yticks(range(n_clusters))
+        ax2.set_xticklabels([f'{k}' for k in range(1, n_clusters + 1)])
+        ax2.set_yticklabels([f'{k}' for k in range(1, n_clusters + 1)])
+        
+        # Remove default grid
+        ax2.grid(False)
+        
+        # Draw borders for lower triangle and diagonal cells only
+        for i in range(n_clusters):
+            for j in range(n_clusters):
+                if i > j or i == j:
+                    rect = patches.Rectangle((j - 0.5, i - 0.5), 1, 1,
+                                             linewidth=0.5, edgecolor='black', facecolor='none')
+                    ax2.add_patch(rect)
+        
+        # Annotate stars in lower triangle cells (i > j)
+        for i in range(n_clusters):
+            for j in range(n_clusters):
+                if i > j:
+                    label = star_mat[i, j] if star_mat[i, j] is not None else ''
+                    ax2.text(j, i, label, ha='center', va='center', color='black')
+        
+        # Remove top and right frame borders
+        ax2.spines['top'].set_visible(False)
+        ax2.spines['right'].set_visible(False)
+        
+        # Optional: make the remaining left and bottom borders thinner for aesthetics
+        ax2.spines['left'].set_linewidth(0.5)
+        ax2.spines['bottom'].set_linewidth(0.5)
+        
+        # Save and show
+        raster_output = os.path.join(self.plot_path_suppl, f'FigS2_{env_plot}_pairwise_significance_raster.pdf')
+        plt.savefig(raster_output, dpi=500, transparent=True)
+        plt.show()
+        
+        print(f"Saved pairwise significance raster to: {raster_output}")
+
+    
     def load_existing_files(self):
         """
         Check if various files created in previous runs exist.
@@ -1487,6 +1713,9 @@ class PlotUtlis():
             with open(self.label_to_color_path, 'r') as f:
                 self.label_to_color = json.load(f)
 
+        if os.path.exists(self.species_cluster_env_values_stats_path):
+            with open(self.species_cluster_env_values_stats_path, 'r') as f:
+                self.species_cluster_env_values_stats = json.load(f)
 
 def create_folder(file_path):
     """
