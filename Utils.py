@@ -568,84 +568,134 @@ class PlotUtlis():
                     if key in hf:
                         del hf[key]
                     hf.create_dataset(key, data=data)
+        print(f'all species nichespace pngs are saved in {self.plot_path_nichespace_png_sp}')
+        print(f'all species nichespace rasters are saved in {self.plot_path_nichespace_h5}')
 
     # For Fig4
     def calculate_spearman(self, extent_info):
         """
-        Calculate Spearman correlation for each species 
-        between Mahalanobis distance from niche centroid 
-        and the predicted suitability.
+        Robust Spearman correlation between Mahalanobis distance from niche centroid
+        and predicted suitability for each species and raster, with safeguards to
+        prevent warnings due to empty inputs, division by zero, or singular covariance.
         """
+        import numpy as np
+        import pandas as pd
+        import h5py
+        from scipy.stats import spearmanr
+        from numpy.linalg import pinv
+    
+        # --- helper functions ---
+        def _grid_centers(extent, n):
+            # Compute the grid center coordinates
+            x0, x1, y0, y1 = extent
+            cw = (x1 - x0) / n
+            ch = (y1 - y0) / n
+            xs = x0 + (np.arange(n) + 0.5) * cw
+            ys = y1 - (np.arange(n) + 0.5) * ch
+            X, Y = np.meshgrid(xs, y1 - (np.arange(n) + 0.5) * ch)  # from top to bottom
+            return X, Y
+    
+        def _weighted_centroid(values, X, Y, eps=1e-12):
+            # Compute a weighted centroid, skip grids with all zeros or NaNs
+            mask = (values > 0) & np.isfinite(values)
+            if not np.any(mask):
+                return np.nan, np.nan
+            v = values[mask]
+            x = X[mask]
+            y = Y[mask]
+            wsum = v.sum()
+            if wsum <= eps:
+                return np.nan, np.nan
+            return (np.sum(v * x) / wsum, np.sum(v * y) / wsum)
+    
+        def _mahalanobis_distances(cx, cy, Xv, Yv, eps=1e-9):
+            # Compute Mahalanobis distance for valid coordinates
+            coords = np.column_stack([Xv, Yv])
+            if coords.shape[0] < 3:
+                return None
+            if (np.ptp(coords[:, 0]) == 0) or (np.ptp(coords[:, 1]) == 0):
+                return None
+            cov = np.cov(coords, rowvar=False)
+            if not np.all(np.isfinite(cov)):
+                return None
+            cov = cov + eps * np.eye(2)
+            VI = pinv(cov)
+            deltas = coords - np.array([cx, cy])[None, :]
+            md2 = np.einsum('ij,jk,ik->i', deltas, VI, deltas)
+            md2 = np.maximum(md2, 0.0)
+            return np.sqrt(md2)
+    
+        # --- prepare grid and coordinates ---
         extent = [
             extent_info[f'PC{self.x_pca:02d}_extent_min'],
             extent_info[f'PC{self.x_pca:02d}_extent_max'],
             extent_info[f'PC{self.y_pca:02d}_extent_min'],
-            extent_info[f'PC{self.y_pca:02d}_extent_max']
+            extent_info[f'PC{self.y_pca:02d}_extent_max'],
         ]
-        cell_width = (extent[1] - extent[0]) / self.niche_rst_size
-        cell_height = (extent[3] - extent[2]) / self.niche_rst_size
-
-        coordinates_values = {'center_x': [], 'center_y': []}
-        for i in range(self.niche_rst_size):
-            for j in range(self.niche_rst_size):
-                coordinates_values['center_x'].append(extent[0] + j * cell_width + cell_width / 2)
-                coordinates_values['center_y'].append(extent[3] - i * cell_height - cell_height / 2)
-
-        df_coords = pd.DataFrame(coordinates_values)
-        df_spearman = pd.DataFrame({'model': [], 'species': [], 'rho': [], 'p': []})
-
+        Xc, Yc = _grid_centers(extent, self.niche_rst_size)
+        Xc_flat = Xc.ravel()
+        Yc_flat = Yc.ravel()
+    
+        results = []
+    
+        # --- iterate through species ---
         for species in self.species_list_predict:
             with h5py.File(self.plot_path_nichespace_h5.replace('[SPECIES]', species), 'r') as hf:
-                grid_deepsdm_all_month_max = hf['deepsdm_all_month_max'][:]
-                grid_deepsdm_all_month_mean = hf['deepsdm_all_month_mean'][:]
-                grid_deepsdm_all_month_sum = hf['deepsdm_all_month_sum'][:]
-                grid_maxent_all_month_max = hf['maxent_all_month_max'][:]
-                grid_maxent_all_month_mean = hf['maxent_all_month_mean'][:]
-                grid_maxent_all_month_sum = hf['maxent_all_month_sum'][:]
-
-            centroids = []
-            centroid_dict = {}
-
-            # Calculate weighted centroids for each raster
-            for raster_name, grid in {
-                'deepsdm_max': grid_deepsdm_all_month_max,
-                'deepsdm_mean': grid_deepsdm_all_month_mean,
-                'deepsdm_sum': grid_deepsdm_all_month_sum,
-                'maxent_max': grid_maxent_all_month_max,
-                'maxent_mean': grid_maxent_all_month_mean,
-                'maxent_sum': grid_maxent_all_month_sum,
-            }.items():
-                centroid_x, centroid_y = calculate_weighted_centroid(grid, extent)
-                centroids.append({'raster': raster_name, 'centroid_x': centroid_x, 'centroid_y': centroid_y})
-                centroid_dict[raster_name] = (centroid_x, centroid_y)
-
-            # Calculate Mahalanobis distance for each raster and compute Spearman correlation
-            for raster_name, grid in {
-                'deepsdm_max': grid_deepsdm_all_month_max,
-                'deepsdm_mean': grid_deepsdm_all_month_mean,
-                'deepsdm_sum': grid_deepsdm_all_month_sum,
-                'maxent_max': grid_maxent_all_month_max,
-                'maxent_mean': grid_maxent_all_month_mean,
-                'maxent_sum': grid_maxent_all_month_sum,
-            }.items():
-                centroid_x, centroid_y = centroid_dict[raster_name]
-                df_cor = df_coords.copy()
-                df_cor['value'] = grid.flatten()
-                valid_df = df_cor[df_cor['value'] > 0].reset_index(drop=True)
-                valid_coords = valid_df[['center_x', 'center_y']].values
-                cov_matrix = np.cov(valid_coords, rowvar=False)
-                inv_cov_matrix = np.linalg.inv(cov_matrix)
-                valid_df['distance_mah'] = valid_df[['center_x', 'center_y']].apply(
-                    lambda row: mahalanobis(row, (centroid_x, centroid_y), inv_cov_matrix), axis=1
-                )
-                rho, p = spearmanr(valid_df['distance_mah'], valid_df['value'])
-                df_spearman.loc[len(df_spearman)] = [raster_name, species, rho, p]
-            df_spearman.to_csv(self.df_spearman_path, index=False)
-
+                rasters = {
+                    'deepsdm_max': hf['deepsdm_all_month_max'][:],
+                    'deepsdm_mean': hf['deepsdm_all_month_mean'][:],
+                    'deepsdm_sum': hf['deepsdm_all_month_sum'][:],
+                    'maxent_max': hf['maxent_all_month_max'][:],
+                    'maxent_mean': hf['maxent_all_month_mean'][:],
+                    'maxent_sum': hf['maxent_all_month_sum'][:],
+                }
+    
+            # Compute weighted centroids for each raster
+            centroids = {}
+            for name, grid in rasters.items():
+                cx, cy = _weighted_centroid(grid, Xc, Yc)
+                centroids[name] = (cx, cy)
+    
+            # Compute Mahalanobis distances and Spearman correlation
+            for name, grid in rasters.items():
+                cx, cy = centroids[name]
+                if not np.isfinite(cx) or not np.isfinite(cy):
+                    results.append([name, species, np.nan, np.nan])
+                    continue
+    
+                values = grid.ravel()
+                valid_mask = (values > 0) & np.isfinite(values)
+                if valid_mask.sum() < 3:
+                    results.append([name, species, np.nan, np.nan])
+                    continue
+    
+                Xv = Xc_flat[valid_mask]
+                Yv = Yc_flat[valid_mask]
+                vv = values[valid_mask]
+    
+                dists = _mahalanobis_distances(cx, cy, Xv, Yv)
+                if dists is None:
+                    results.append([name, species, np.nan, np.nan])
+                    continue
+    
+                # Skip constant input arrays to avoid ConstantInputWarning
+                if (np.ptp(dists) == 0) or (np.ptp(vv) == 0):
+                    results.append([name, species, np.nan, np.nan])
+                    continue
+    
+                rho, p = spearmanr(dists, vv)
+                if not (np.isfinite(rho) and np.isfinite(p)):
+                    rho, p = np.nan, np.nan
+                results.append([name, species, rho, p])
+    
+        df_spearman = pd.DataFrame(results, columns=['model', 'species', 'rho', 'p'])
+        df_spearman.to_csv(self.df_spearman_path, index=False)
+        print(f'All results of Spearman rho are saved in {self.df_spearman_path}.')
         return df_spearman
 
+
     # Fig4
-    def calculate_rho_niche_coocccounts(self):
+    def calculate_rho_niche_coocccounts(self, species_exclude = []):
         """
         Compute the correlation between co-occurrence counts of two species
         and the cosine similarity of their niche space. 
@@ -674,9 +724,14 @@ class PlotUtlis():
             except Exception:
                 return None
 
+        if len(species_exclude) != 0:
+            species_list = set(self.species_list_predict) - set(species_exclude)
+        else:
+            species_list = self.species_list_predict
+            
         coocc_counts_filter = self.coocc_counts[
-            (self.coocc_counts.sp1.isin(self.species_list_predict)) &
-            (self.coocc_counts.sp2.isin(self.species_list_predict)) &
+            (self.coocc_counts.sp1.isin(species_list)) &
+            (self.coocc_counts.sp2.isin(species_list)) &
             (self.coocc_counts.sp1 != self.coocc_counts.sp2) &
             (self.coocc_counts.counts != 0)
         ].reset_index(drop=True)
