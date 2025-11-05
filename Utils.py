@@ -1351,7 +1351,7 @@ class PlotUtlis():
             condition_deepsdm = df_cor['value_deepsdm'] > 0
 
             # Plot niche space (subplot 1)
-            fig, ax = plt.subplots(figsize=mm2inch(40, 50), gridspec_kw={'left': 0.25, 'right': 0.95, 'bottom': 0.12, 'top': 1-0.05/1.25})
+            fig, ax = plt.subplots(figsize=mm2inch(40*1.2, 50*1.2), gridspec_kw={'left': 0.25, 'right': 0.95, 'bottom': 0.12, 'top': 1-0.05/1.25})
             ax_imshow = ax.imshow(nichespace_deepsdm, cmap='coolwarm', extent=self.nichespace_extent)
             ax.spines['right'].set_visible(False)
             ax.spines['top'].set_visible(False)
@@ -1374,7 +1374,7 @@ class PlotUtlis():
             plt.show()
 
             # Plot geographic space (subplot 2)
-            fig, ax = plt.subplots(figsize=mm2inch(40, 50), gridspec_kw={'left': 0.25, 'right': 0.95, 'bottom': 0.96-28/1.0921832795998423/50, 'top': 0.96})
+            fig, ax = plt.subplots(figsize=mm2inch(40*1.1, 50*1.1), gridspec_kw={'left': 0.25, 'right': 0.95, 'bottom': 0.96-28/1.0921832795998423/50, 'top': 0.96})
             ax_imshow = ax.imshow(img_sum, cmap='coolwarm', extent=self.extent_binary_extent, vmin=0)
             ax.set_ylabel('Latitude (N)', size=6.5)
             ax.set_xlabel('Longitude (E)', size=6.5)
@@ -1397,7 +1397,7 @@ class PlotUtlis():
             plt.show()
 
             # Plot Beta regression in niche space (subplot 3)
-            fig, ax = plt.subplots(figsize=mm2inch(40, 40), gridspec_kw={'left': 0.25, 'right': 0.95, 'bottom': 0.15, 'top': 0.95})
+            fig, ax = plt.subplots(figsize=mm2inch(40*1.2, 40*1.2), gridspec_kw={'left': 0.25, 'right': 0.95, 'bottom': 0.15, 'top': 0.95})
             ax.scatter(df_cor['distance_mah'][condition_deepsdm], df_cor['value_deepsdm'][condition_deepsdm], alpha=0.2, color='grey', s=0.1)
             ax.set_ylabel('Suitablity')
             ax.set_xlabel('Distance')
@@ -1424,7 +1424,7 @@ class PlotUtlis():
             plt.show()
 
             # Plot Beta regression in geographic space (subplot 4)
-            fig, ax = plt.subplots(figsize=mm2inch(40, 40), gridspec_kw={'left': 0.25, 'right': 0.95, 'bottom': 0.15, 'top': 0.95})
+            fig, ax = plt.subplots(figsize=mm2inch(40*1.2, 40*1.2), gridspec_kw={'left': 0.25, 'right': 0.95, 'bottom': 0.15, 'top': 0.95})
             ax.scatter(distances_all, cell_values_all, alpha=0.1, color='grey', s=0.1)
             ax.set_ylabel('Suitablity')
             ax.set_xlabel('Distance (km)')
@@ -1522,7 +1522,7 @@ class PlotUtlis():
             pairwise_results[f'Cluster {a} vs Cluster {b}'] = (stat, p)
     
         # ---------- Violin plot (with significance annotations) ----------
-        fig, ax = plt.subplots(figsize=mm2inch(50, 50), constrained_layout=True)
+        fig, ax = plt.subplots(figsize=mm2inch(40, 50), constrained_layout=True)
     
         data_for_violin = [cluster_env_values[k] for k in clusters]
     
@@ -1556,8 +1556,11 @@ class PlotUtlis():
     
         # Y label
         ax.set_ylabel(convert_to_env_list_detail([env_plot])[0])
-    
-        # --------- Add significance lines + stars (old style) ----------
+        
+        # Format y-axis tick labels to 1 decimal places
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.1f}'))
+        
+        # --------- Add significance lines + stars ----------
         # Use data range to place annotation levels above violins
         y_max = max(max(cluster_env_values[k]) for k in clusters)
         y_min = min(min(cluster_env_values[k]) for k in clusters)
@@ -1574,13 +1577,16 @@ class PlotUtlis():
                 p_value = pairwise_results[key][1]
                 significance = get_significance_stars(p_value)
                 ax.plot([pos1, pos2], [y_pos, y_pos], color='black', linewidth=0.5)
-                ax.text((pos1 + pos2) / 2, y_pos, significance, ha='center', va='center', fontsize=5)
+                if significance == 'n.s.':
+                    ax.text((pos1 + pos2) / 2, y_pos, significance, ha='center', va='bottom', fontsize=5)
+                else:
+                    ax.text((pos1 + pos2) / 2, y_pos, significance, ha='center', va='center', fontsize=5)
     
         # Expand ylim to make room for annotations
         ax.set_ylim(bottom=min(y_min, ax.get_ylim()[0]), top=y_levels[-1] + 1.5 * y_step)
     
         # Save plot (same filename pattern as before, now includes 3 clusters)
-        plot_output = os.path.join(self.plot_path_suppl, f'FigS2_{env_plot}_violin_species_median_{n_clusters}clusters.pdf')
+        plot_output = os.path.join(self.plot_path_nichespace_clustering, f'{env_plot}_violin_species_median_clusters.pdf')
         plt.savefig(plot_output, dpi=500, transparent=True)
         plt.show()
     
