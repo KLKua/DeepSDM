@@ -139,25 +139,6 @@ Data Augmentation:
 - **Kappa**: Cohen's Kappa Coefficient
 - **F1-Score**: Harmonic mean of precision and recall
 
-### 5. Ecological Analysis
-
-#### Niche Space Analysis (Fig4)
-- Project high-dimensional environmental space to PC1-PC2
-- Calculate species distributions in niche space
-- Analyze relationship between niche center and suitability
-- Quantify niche position using Mahalanobis distance
-
-#### Niche Clustering (Fig5)
-- Cluster species based on niche centers
-- Use Linear Discriminant Analysis (LDA) to find maximum variance directions
-- Analyze contributions of environmental gradients to species groupings
-
-#### Survival Analysis (Fig6)
-- Cox proportional hazards model to assess species extinction risk
-- Analyze effects of niche characteristics on species persistence
-
-## Installation and Setup
-
 ### Python Environment
 
 ```bash
