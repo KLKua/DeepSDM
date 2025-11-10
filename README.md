@@ -1,311 +1,449 @@
-# DeepSDM: Deep Species Distribution Modeling Framework
+# Species‑Embedding & Attention Multiscale U‑Net for Species Distribution Modeling (SEAM-SDM)
 
-DeepSDM is a deep learning framework for modeling species distributions using environmental data and species co-occurrence patterns. This framework leverages attention mechanisms to capture important environmental factors and produces high-quality species distribution predictions.
+## Project Overview
 
-## Data and Results
+This project implements a deep learning-based Species Distribution Model (SDM) for predicting spatiotemporal distributions of bird species in Taiwan. The model combines Convolutional Neural Network (CNN) architecture with species co-occurrence relationships to predict habitat suitability across different temporal scales.
 
-All data and results for this project are available at:
-https://drive.google.com/drive/folders/1zzJg_q1gTyvoprR7r4iX69xrOYRsJlGR?usp=drive_link
+### Key Features
 
-## Overview
+- **Deep Learning Architecture**: Modified U-Net architecture integrating environmental variables and species embeddings
+- **Species Co-occurrence Learning**: Word2Vec-like approach for learning inter-species relationships
+- **Spatiotemporal Prediction**: Monthly temporal resolution for species distribution forecasting
+- **Model Comparison**: Systematic comparison with traditional MaxEnt models
+- **Niche Space Analysis**: Species niche analysis in PCA-reduced environmental space
 
-DeepSDM uses a U-Net architecture with attention mechanisms to predict species distributions based on environmental variables and species embeddings derived from co-occurrence data. The framework consists of several components for data preparation, model training, prediction, and evaluation.
+## Project Structure
 
-## System Requirements
-
-### Software Requirements
-- Python 3.8+
-- PyTorch 1.13.1
-- PyTorch Lightning 2.0.6
-- GDAL
-- Various Python packages (rasterio, umap-learn, mlflow, etc.)
-
-### Hardware Requirements
-- CUDA-compatible GPU (recommended)
-- Sufficient RAM for processing large environmental datasets
-
-## Installation
-
-```bash
-# System dependencies
-sudo apt install build-essential
-sudo apt update
-sudo apt install libpq-dev
-sudo apt install software-properties-common
-sudo apt-add-repository ppa:ubuntugis/ppa
-sudo apt install gdal-bin
-sudo apt install libgdal-dev
-sudo apt install libgl1-mesa-glx
-
-# Check GDAL version and install matching Python package
-gdalinfo --version
-pip install gdal==<version>
-
-# Install other required packages
-pip install rasterio umap-learn mlflow
-pip install torch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1
-pip install pytorch-lightning==2.0.6 torchmetrics==0.11.0
+```
+.
+├── 01_prepare_data.ipynb              # Data preparation workflow
+├── 02_train_deepsdm.py                # Main model training script
+├── 03_make_prediction.ipynb           # Model prediction workflow
+├── run_maxent_and_evaluate_models.R   # MaxEnt model training & evaluation
+├── evaluate_models_constantthreshold.R # Fixed threshold model evaluation
+├── DeepSDM_conf.yaml                  # Configuration file
+│
+├── Fig2_embedding.ipynb               # Species embedding visualization
+├── Fig3_attention.ipynb               # Attention mechanism analysis
+├── Fig4_nichespace.ipynb              # Niche space analysis
+├── Fig5_nichespace_clustering.ipynb   # Niche clustering analysis
+├── Fig6_cph.ipynb                     # Cox proportional hazards analysis
+│
+├── Utils.py                           # Python utility functions
+├── Utils_R.R                          # R utility functions
+├── LitDeepSDMData.py                  # Data module
+├── LitDeepSDMData_prediction.py       # Prediction data module
+├── LitUNetSDM.py                      # Model training module
+├── LitUNetSDM_prediction.py           # Model prediction module
+├── Unet.py                            # U-Net network architecture
+├── TaxaDataset.py                     # Dataset class
+├── TaxaDataset_smoothviz.py           # Smooth visualization dataset
+├── TaxaDataset_smoothviz_prediction.py # Prediction visualization dataset
+├── EmbeddingHelpers.py                # Species embedding helpers
+├── RasterHelper.py                    # Raster data processing
+├── CooccurrenceHelper.py              # Co-occurrence computation
+│
+├── requirements.txt                   # Python dependencies
+├── requirements_r.txt                 # R dependencies
+├── python_env.yaml                    # Conda environment config
+└── setup_r_environment.md             # R environment setup guide
 ```
 
-## Workflow
+## Methodology
 
-The DeepSDM workflow consists of the following steps:
+### 1. Data Preparation
 
-### 0. Download Environmental Data (Download_env.ipynb)
+#### Environmental Variables
+- **Climate Data**: CHELSA v2.1 (cloud cover, humidity, precipitation, radiation, wind speed, temperature, etc.)
+- **Vegetation Index**: EVI (Enhanced Vegetation Index)
+- **Land Cover**: ESA CCI Land Cover (PCA-reduced)
+- **Temporal Coverage**: 2001-2018, monthly resolution
+- **Spatial Resolution**: ~1km × 1km
 
-This Jupyter notebook provides instructions and code for downloading the necessary environmental data:
+#### Species Occurrence Data
+- 125 Taiwan resident bird species occurrence records
+- Processed into binary rasters (presence/absence)
+- Spatially-split training/validation sets
 
-- **CHELSA Dataset**: Downloads climate variables (clt, hurs, pr, rsds, sfcWind, tas) for each month from 2000 to 2019
-- **Land Cover Dataset**: Instructions for downloading ESA Land Cover data (2000-2020)
-- **EVI Dataset**: Instructions for obtaining Enhanced Vegetation Index data from NASA's AppEEARS
-- **Elevation Dataset**: Link to download WorldClim Elevation Data
+### 2. Model Architecture
 
-This step is optional if you already have the environmental data available in the Google Drive link.
+#### DeepSDM Network Structure
 
-### 1. Data Preparation (01_prepare_data.ipynb)
+```
+Inputs:
+├── Environmental Variables (11-D): [clt, hurs, pr, rsds, sfcWind, tas, EVI, landcover_PC01-04]
+└── Species Embedding Vector (64-D): Learned from co-occurrence matrix
 
-This Jupyter notebook handles all data processing steps before training:
+Network Architecture:
+├── Species Embedding Branch:
+│   └── 4-layer convolutional downsampling (16→32→64→128 channels)
+│
+├── Main U-Net Branch:
+│   ├── Encoder (Downsampling):
+│   │   ├── Conv Block 1: 64 channels + species feature fusion
+│   │   ├── Conv Block 2: 128 channels + species feature fusion
+│   │   ├── Conv Block 3: 256 channels + species feature fusion
+│   │   └── Conv Block 4: 512 channels + species feature fusion
+│   │
+│   └── Decoder (Upsampling):
+│       ├── UpConv + Skip Connection: 256 channels
+│       ├── UpConv + Skip Connection: 128 channels
+│       ├── UpConv + Skip Connection: 64 channels
+│       └── UpConv + Skip Connection: 32 channels
+│
+└── Output: 1×H×W (habitat suitability prediction)
 
-- **Configuration Loading**: Loads parameters from `DeepSDM_conf.yaml` 
-- **Spatial Configuration**: Creates extent maps and train/validation splits
-- **Environmental Data Processing**: 
-  - Processes raw environmental rasters to align with the defined extent
-  - Normalizes values and handles missing data
-  - For land cover data, performs PCA to reduce dimensionality
-  - Averages data across time spans
-- **Species Occurrence Processing**:
-  - Filters raw GBIF occurrence data
-  - Creates aligned species presence rasters
-  - Generates effort-weight (k) rasters for loss calculation
-- **Species Co-occurrence Embeddings**:
-  - Identifies co-occurring species
-  - Trains embeddings to capture ecological relationships
-  - Creates a vector representation for each species
+Special Design:
+- Attention Mechanism: A = softmax(species_embedding)
+- Feature Fusion: multiply(A, environmental_features)
+- Normalization: Group Normalization (4 groups)
+- Activation: LeakyReLU
+```
 
-### 2. Model Training (02_train_deepsdm.py)
+#### Species Embedding Learning
 
-This script orchestrates the training process:
+Word2Vec-like skip-gram model for learning species co-occurrence relationships:
 
-- **Configuration and Initialization**:
-  - Initializes the data module and model
-- **Checkpoint and Early Stopping Setup**:
-  - Configures model checkpointing to save the best models based on F1 score
-  - Sets up early stopping to prevent overfitting
-- **Trainer Configuration**:
-  - Initializes PyTorch Lightning Trainer with specified devices
-  - Configures distributed data parallel training (DDP) for multi-GPU usage
-  - Sets up MLflow logger for experiment tracking
-- **Model Training**:
-  - Performs model training with effort-weighted loss
-  - Conducts periodic validation
-  - Logs progress to MLflow
+```python
+Loss = -Σ log(sigmoid(u·v)) - Σ log(sigmoid(-nu·nv))
+       positive pairs      negative samples
+```
 
-### 3. Prediction (03_make_prediction.ipynb)
+- Positive samples: Actually co-occurring species pairs (weighted by co-occurrence frequency)
+- Negative samples: Randomly sampled species pairs
+- Embedding dimension: 64
 
-This notebook handles generating predictions with the trained model:
+### 3. Training Strategy
 
-- **Model Loading**:
-  - Loads saved model checkpoints from MLflow
-  - Can load and average the top-k best models
-- **Single GPU Prediction**:
-  - Simple prediction loop for one GPU
-- **Multi-GPU Prediction**:
-  - Distributes prediction tasks across multiple GPUs
-  - Splits species and dates into separate batches
-- **Output Generation**:
-  - Saves predictions as GeoTIFF files
-  - Creates visualization images (PNG)
-  - Optionally generates attention maps
+```yaml
+Hyperparameters:
+  batch_size: 350
+  epochs: 300
+  learning_rate: 0.0001
+  optimizer: Adam
+  
+Loss Functions:
+  k2: BCE(prediction, target) - Binary Cross Entropy
+  k2_p: Smoothness penalty (0.33)
+  k3: L2 regularization (0.083)
+  
+Data Augmentation:
+  - Random cropping: 56×56 patches
+  - Temporal subsampling: Use subset of time steps per training iteration
+```
 
-### 4. Evaluation (run_maxent_and_evaluate_models.R, evaluate_models_constantthreshold.R)
+### 4. Evaluation Metrics
 
-Two R scripts handle model evaluation and comparison:
+- **AUC-ROC**: Area Under the Receiver Operating Characteristic Curve
+- **TSS**: True Skill Statistic
+- **Kappa**: Cohen's Kappa Coefficient
+- **F1-Score**: Harmonic mean of precision and recall
 
-- **run_maxent_and_evaluate_models.R**:
-  - Runs MaxEnt models on the same data for comparison
-  - Calculates performance metrics (AUC, TSS, Kappa, F1)
-  - Creates summary statistics and comparison tables
-- **evaluate_models_constantthreshold.R**:
-  - Evaluates models using constant thresholds across dates
-  - Generates binary prediction maps
-  - Calculates threshold-dependent metrics
+### 5. Ecological Analysis
 
-**Important**: To execute these evaluation scripts correctly, you must:
-1. Copy the contents of `run_maxent_and_evaluate_models_batch.sh` to your terminal and execute first
-2. After that completes, copy the contents of `evaluate_models_constantthreshold_batch.sh` to your terminal and execute
-3. Make sure to maintain this exact execution order as the second script depends on outputs from the first script
+#### Niche Space Analysis (Fig4)
+- Project high-dimensional environmental space to PC1-PC2
+- Calculate species distributions in niche space
+- Analyze relationship between niche center and suitability
+- Quantify niche position using Mahalanobis distance
 
-## Code Structure
+#### Niche Clustering (Fig5)
+- Cluster species based on niche centers
+- Use Linear Discriminant Analysis (LDA) to find maximum variance directions
+- Analyze contributions of environmental gradients to species groupings
 
-### Core Files and Their Functions
+#### Survival Analysis (Fig6)
+- Cox proportional hazards model to assess species extinction risk
+- Analyze effects of niche characteristics on species persistence
 
-- **01_prepare_data.ipynb**: Data preparation notebook
-- **02_train_deepsdm.py**: Model training script
-- **03_make_prediction.ipynb**: Prediction notebook
+## Installation and Setup
 
-### Model Architecture Files
+### Python Environment
 
-- **Unet.py**: Implements the core U-Net architecture with attention mechanisms
-- **LitUNetSDM.py**: PyTorch Lightning module that wraps the U-Net model
-- **LitUNetSDM_prediction.py**: Modified model module for prediction
+```bash
+# Create environment using conda
+conda env create -f python_env.yaml
+conda activate deepsdm
 
-### Data Handling Files
+# Or install using pip
+pip install -r requirements.txt
+```
 
-- **LitDeepSDMData.py**: Data module for PyTorch Lightning
-- **LitDeepSDMData_prediction.py**: Modified data module for prediction
-- **TaxaDataset.py**: Dataset class for training data
-- **TaxaDataset_smoothviz.py**: Dataset class for visualization during training
-- **TaxaDataset_smoothviz_prediction.py**: Dataset class for prediction
+Key Dependencies:
+- PyTorch >= 1.9.0
+- PyTorch Lightning >= 1.5.0
+- rasterio
+- h5py
+- pandas, numpy, scipy
+- scikit-learn
+- matplotlib, seaborn
 
-### Utility Files
+### R Environment
 
-- **RasterHelper.py**: Handles raster processing and manipulation
-- **CooccurrenceHelper.py**: Calculates species co-occurrences
-- **EmbeddingHelpers.py**: Trains species embeddings
-- **Utils.py**: Utility functions for Python
-- **Utils_R.R**: Utility functions for R
+```bash
+# Install R packages
+Rscript -e "install.packages(c('raster', 'dismo', 'rJava', 'pROC', 'tidyverse', 'rjson', 'yaml', 'hdf5r'))"
+```
 
-### Configuration File
+See `setup_r_environment.md` for detailed setup instructions.
 
-- **DeepSDM_conf.yaml**: Contains all parameters for the framework:
-  - File paths for data
-  - Training configurations
-  - Spatial and temporal settings
-  - Model parameters
-  - Lists of species and dates
-
-## Key Components
-
-### Spatial Configuration
-
-The spatial unit for training is defined by:
-- Geographic extent (x_start, y_start, x_end, y_end)
-- Grid size and resolution
-- Train/validation splits
-
-### Temporal Configuration
-
-The temporal unit is defined by:
-- Date range (date_start, date_end)
-- Time span parameters (month_span, month_step)
-- Co-occurrence time limit
-
-### Environmental Data
-
-DeepSDM supports various environmental factors:
-- Cloud area fraction (clt)
-- Relative humidity (hurs)
-- Precipitation (pr)
-- Shortwave radiation (rsds)
-- Wind speed (sfcWind)
-- Temperature (tas)
-- Enhanced Vegetation Index (EVI)
-- Land cover principal components
-
-### Model Architecture
-
-The model uses a U-Net architecture with:
-- Attention mechanisms to focus on relevant environmental factors
-- Species embeddings as input
-- Skip connections to preserve spatial information
-- Multiple convolutional layers for complex patterns
-
-### Loss Function
-
-The model uses a weighted binary cross-entropy loss with three components:
-1. Loss for presence points
-2. Effort-weighted loss for surveyed absence points
-3. Background loss for unsurveyed pixels
-
-## Usage Examples
+## Usage
 
 ### Complete Workflow
 
+#### Step 1: Data Preparation
+
 ```bash
-# 1. Prepare data
+# Run Jupyter Notebook
 jupyter notebook 01_prepare_data.ipynb
-# Execute all cells to process data
-
-# 2. Train model
-python 02_train_deepsdm.py
-# Monitor training progress with MLflow
-mlflow ui
-
-# 3. Make predictions
-jupyter notebook 03_make_prediction.ipynb
-# Execute cells to generate predictions
-
-# 4. Evaluate results
-# Copy the contents of run_maxent_and_evaluate_models_batch.sh to terminal and execute
-# After it completes, copy the contents of evaluate_models_constantthreshold_batch.sh to terminal
-# Note: These must be executed in this exact order!
 ```
 
-### Custom Species and Dates
+This step will:
+- Process raw environmental data
+- Perform PCA dimensionality reduction (land cover)
+- Generate species occurrence rasters
+- Calculate species co-occurrence matrix
+- Train species embedding vectors
 
-To predict custom species and dates, modify the YAML configuration or edit the prediction notebook:
+#### Step 2: Train DeepSDM Model
+
+```bash
+python 02_train_deepsdm.py
+```
+
+Training process:
+- Model training using PyTorch Lightning
+- Automatic saving of best model checkpoints
+- Log training metrics to MLflow
+- Generate training curves and performance metrics
+
+#### Step 3: Generate Predictions
+
+```bash
+jupyter notebook 03_make_prediction.ipynb
+```
+
+Prediction outputs:
+- Species distribution probability maps (HDF5 format)
+- Attention weight maps (optional)
+- PNG visualization images
+
+#### Step 4: Train MaxEnt Baseline Model
+
+```bash
+Rscript run_maxent_and_evaluate_models.R
+```
+
+MaxEnt training:
+- Train independent models for each species-time combination
+- Use same presence/pseudo-absence points
+- Calculate same evaluation metrics as DeepSDM
+
+#### Step 5: Model Comparison and Analysis
+
+```bash
+Rscript evaluate_models_constantthreshold.R  # Fixed threshold evaluation
+
+# Run figure generation notebooks
+jupyter notebook Fig2_embedding.ipynb
+jupyter notebook Fig3_attention.ipynb  
+jupyter notebook Fig4_nichespace.ipynb
+jupyter notebook Fig5_nichespace_clustering.ipynb
+jupyter notebook Fig6_cph.ipynb
+```
+
+## Configuration File
+
+### DeepSDM_conf.yaml
+
+Main configuration items:
 
 ```yaml
+# Geographic extent
+geo_extent_file: ./workspace/extent_binary.tif
+
+# Training configuration
 training_conf:
-  species_list_predict: 
-    - Carpodacus_formosanus
-    - Parus_monticolus
-  date_list_predict:
-    - '2018-01-01'
-    - '2018-07-01'
-    - '2018-10-01'
+  batch_size_train: 350
+  epochs: 300
+  learning_rate: 0.0001
+  env_list: ['clt', 'hurs', 'pr', 'rsds', 'sfcWind', 'tas', 'EVI', 
+             'landcover_PC01', 'landcover_PC02', 'landcover_PC03', 'landcover_PC04']
+  date_list_train: ['2001-01-01', '2001-02-01', ...]  # Monthly time series
+  species_list_train: ['Arborophila_crudigularis', ...]  # 125 species
+
+# Species embedding configuration
+embedding_conf:
+  num_vector: 64
+  epochs: 2000
+  batch_size: 1000
+  num_neg: 10
+
+# Environmental data source configuration
+env_source_conf:
+  clt: CHELSA v2.1
+  hurs: CHELSA v2.1
+  # ... other environmental variables
+  
+# Land cover PCA configuration  
+CCI_conf:
+  landcover:
+    PCA: 0.8  # Retain 80% variance
 ```
 
-## Directory Structure
+## Main Module Descriptions
+
+### Core Training Modules
+
+**LitUNetSDM.py**: PyTorch Lightning module
+- Define training loop
+- Implement custom loss functions
+- Handle validation and testing
+- Save model checkpoints
+
+**Unet.py**: U-Net network definition
+- Custom U-Net architecture
+- Species embedding feature fusion
+- Attention mechanism implementation
+
+### Data Processing Modules
+
+**LitDeepSDMData.py**: Data module
+- Define data loaders
+- Implement train/validation split
+- Handle batch sampling
+
+**TaxaDataset.py**: PyTorch dataset class
+- Load environmental data from HDF5 files
+- Dynamically generate subsample patches
+- Handle presence/background points
+
+**CooccurrenceHelper.py**: Co-occurrence relationships
+- Calculate species co-occurrence matrix
+- Handle spatiotemporal overlap
+- Generate species pair datasets
+
+**EmbeddingHelpers.py**: Species embeddings
+- Skip-gram model implementation
+- Negative sampling strategy
+- UMAP visualization
+
+### Utility Functions
+
+**Utils.py**: Python general utilities
+- HDF5 data I/O
+- Raster data processing
+- Performance metric calculation
+
+**Utils_R.R**: R general utilities
+- MaxEnt model training
+- Evaluation metric calculation
+- Raster operation functions
+
+**RasterHelper.py**: Raster processing
+- Geographic coordinate transformation
+- Raster resampling
+- Spatial indexing
+
+## Output Results
+
+### Prediction Results
 
 ```
-DeepSDM/
-├── 01_prepare_data.ipynb        # Data preparation notebook
-├── 02_train_deepsdm.py          # Model training script
-├── 03_make_prediction.ipynb     # Prediction notebook
-├── CooccurrenceHelper.py        # Helper for co-occurrences
-├── DeepSDM_conf.yaml            # Configuration file
-├── Download_env.ipynb           # Instructions for downloading environmental data 
-├── EmbeddingHelpers.py          # Helper for embeddings
-├── LitDeepSDMData.py            # Data module
-├── LitDeepSDMData_prediction.py # Data module for prediction
-├── LitUNetSDM.py                # Model module
-├── LitUNetSDM_prediction.py     # Model module for prediction
-├── RasterHelper.py              # Helper for raster data
-├── TaxaDataset.py               # Dataset class
-├── TaxaDataset_smoothviz.py     # Dataset for visualization
-├── TaxaDataset_smoothviz_prediction.py # Dataset for prediction
-├── Unet.py                      # U-Net model
-├── Utils.py                     # Utilities
-├── Utils_R.R                    # R utilities
-├── dwca-trait_454-v1.68/        # Trait dataset files
-├── evaluate_models_constantthreshold.R # Evaluation script
-├── evaluate_models_constantthreshold_batch.sh # Batch script for evaluation
-├── mlruns/                      # MLflow tracking
-├── plots/                       # Result analysis files and paper figures
-├── predicts/                    # DeepSDM model predictions
-├── predicts_maxent/             # MaxEnt results and model performance
-├── raw/                         # Raw input data
-├── run_maxent_and_evaluate_models.R   # MaxEnt comparison
-├── run_maxent_and_evaluate_models_batch.sh # Batch script for MaxEnt
-└── workspace/                   # Processed data
+predicts/[RUN_ID]/
+├── h5/
+│   └── all/
+│       └── [SPECIES]/
+│           └── [SPECIES].h5          # Continuous suitability predictions
+├── png/
+│   └── all/
+│       └── [SPECIES]/
+│           └── [SPECIES]_[DATE]_*.png  # Visualization images
+└── attention/
+    └── [SPECIES]/
+        └── [SPECIES]_[DATE]_attention.h5  # Attention weights
 ```
 
-## Data Formats and Storage
+### MaxEnt Results
 
-### Input Data
-- Environmental rasters: GeoTIFF format
-- Species occurrence: CSV from GBIF
-- Land cover: NetCDF files
+```
+predicts_maxent/[RUN_ID]/
+├── h5/
+│   ├── all/                            # Continuous predictions
+│   ├── binary/                         # Binary predictions (variable threshold)
+│   └── binary_constantthreshold/       # Binary predictions (fixed threshold)
+├── maxent_model/                       # Model objects
+├── env_contribution/                   # Environmental contributions
+└── model_performance_*.csv             # Performance metrics
+```
 
-### Intermediate Data
-- Processed environmental layers: Aligned GeoTIFF files
-- Species presence rasters: Binary GeoTIFF files
-- Effort (k) rasters: GeoTIFF files
-- Species embeddings: JSON vectors
+### Analysis Figures
 
-### Output Data
-- Model predictions: GeoTIFF files (0-1 values)
-- Binary predictions: Thresholded GeoTIFF files
-- Attention maps: GeoTIFF files showing variable importance
-- Performance metrics: CSV files
+```
+plots/[RUN_ID]/
+├── Fig2_embedding/                     # Species embedding UMAP plots
+├── Fig3_attention/                     # Attention weight heatmaps
+├── Fig4_nichespace/                    # Niche space analysis
+├── Fig5_nichespace_clustering/         # Niche clustering results
+└── Fig6_cph/                           # Survival analysis results
+```
+
+## Evaluation and Results
+
+### Model Performance
+
+Main advantages of DeepSDM compared to MaxEnt:
+
+1. **Temporal Generalization**: Better prediction of species distributions at unseen time points
+2. **Data Efficiency**: Better performance for data-sparse species through information sharing via species embeddings
+3. **Spatial Consistency**: Spatially smoother and more continuous predictions
+4. **Niche Accuracy**: Predictions in niche space better match actual species distributions
+
+
+### Ecological Insights
+
+1. **Environmental Gradients**: Temperature, precipitation, and elevation are primary drivers of species distributions
+2. **Species Co-occurrence**: Embedding space reveals clustering patterns of functionally similar species
+3. **Temporal Dynamics**: Model captures seasonal migration and temporal variation in habitat use
+4. **Spatial Heterogeneity**: Attention mechanism identifies differential species responses to environmental factors
+
+## Advanced Features
+
+### Custom Species
+
+To make predictions for new species:
+
+1. Prepare species occurrence data (CSV format with longitude, latitude, and date)
+2. Update species list in `DeepSDM_conf.yaml`
+3. Re-run data preparation workflow to generate HDF5 files
+4. For species not in original training set, use zero-shot prediction (with default embedding vector)
+
+### Custom Environmental Variables
+
+To add new environmental variables:
+
+1. Prepare monthly GeoTIFF raster data
+2. Add configuration in `env_source_conf` of `DeepSDM_conf.yaml`
+3. Update `env_list` to include new variable name
+4. Retrain model
+
+### Transfer to Other Regions
+
+To apply model to a new region:
+
+1. Prepare environmental variable rasters for new region
+2. Create new `extent_binary.tif` defining study area
+3. Update geographic extent settings in `DeepSDM_conf.yaml`
+4. Use pre-trained model for transfer learning or fully retrain
+
+
+### Performance Optimization
+
+- Use GPU acceleration for training (CUDA-enabled PyTorch)
+- Enable mixed precision training (`precision=16` in Trainer)
+- Use multi-GPU training (`gpus=[0,1,2,3]`)
+- Increase number of data loader workers
+
+---
+
+**Note**: This README provides a comprehensive overview of the project. For detailed technical explanations, please refer to the docstrings in individual modules and the manuscript.
