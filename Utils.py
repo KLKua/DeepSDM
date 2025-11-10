@@ -1371,8 +1371,8 @@ class PlotUtlis():
             ax.scatter(center[0], center[1], c='black', s=15, marker='x', linewidths=0.8)
             plot_output = os.path.join(self.plot_path_cph_subplots, 'Fig6_subplots_1', f'Fig6_subplots_1_{species}.pdf')
             plt.savefig(plot_output, dpi=500, transparent=True)
-            plt.show()
-
+            plt.close()
+            
             # Plot geographic space (subplot 2)
             fig, ax = plt.subplots(figsize=mm2inch(40*1.1, 50*1.1), gridspec_kw={'left': 0.25, 'right': 0.95, 'bottom': 0.96-28/1.0921832795998423/50, 'top': 0.96})
             ax_imshow = ax.imshow(img_sum, cmap='coolwarm', extent=self.extent_binary_extent, vmin=0)
@@ -1394,7 +1394,7 @@ class PlotUtlis():
             ax.yaxis.set_major_locator(MaxNLocator(integer=True))
             plot_output = os.path.join(self.plot_path_cph_subplots, 'Fig6_subplots_2', f'Fig6_subplots_2_{species}.pdf')
             plt.savefig(plot_output, dpi=500, transparent=True)
-            plt.show()
+            plt.close()
 
             # Plot Beta regression in niche space (subplot 3)
             fig, ax = plt.subplots(figsize=mm2inch(40*1.2, 40*1.2), gridspec_kw={'left': 0.25, 'right': 0.95, 'bottom': 0.15, 'top': 0.95})
@@ -1419,9 +1419,11 @@ class PlotUtlis():
             ax.set_box_aspect(self.nichespace_cell_height / self.nichespace_cell_width)
             plot_output = os.path.join(self.plot_path_cph_subplots, 'Fig6_subplots_3', f'Fig6_subplots_3_{species}.pdf')
             plt.savefig(plot_output, dpi=500, transparent=True)
+            plt.close()
+            
             plot_output = os.path.join(self.plot_path_cph_subplots, 'Fig6_subplots_3', f'Fig6_subplots_3_{species}.png')
             plt.savefig(plot_output, dpi=2000, transparent=True)
-            plt.show()
+            plt.close()
 
             # Plot Beta regression in geographic space (subplot 4)
             fig, ax = plt.subplots(figsize=mm2inch(40*1.2, 40*1.2), gridspec_kw={'left': 0.25, 'right': 0.95, 'bottom': 0.15, 'top': 0.95})
@@ -1446,9 +1448,11 @@ class PlotUtlis():
             ax.set_box_aspect(self.nichespace_cell_height / self.nichespace_cell_width)
             plot_output = os.path.join(self.plot_path_cph_subplots, 'Fig6_subplots_4', f'Fig6_subplots_4_{species}.pdf')
             plt.savefig(plot_output, dpi=500, transparent=True)
+            plt.close()
+
             plot_output = os.path.join(self.plot_path_cph_subplots, 'Fig6_subplots_4', f'Fig6_subplots_4_{species}.png')
             plt.savefig(plot_output, dpi=2000, transparent=True)
-            plt.show()
+            plt.close()
 
     # For FigSupplementary
     def species_occ_env_violinplot(self, env_plot, species_exclude=[]):
