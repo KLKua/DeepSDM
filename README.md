@@ -1,6 +1,6 @@
-# DeepSDM Project Guide
+# SEAM-SDM Project Guide
 
-Deep Species Distribution Model (DeepSDM) predicts monthly habitat suitability by combining species co-occurrence embeddings, multi-scale environmental rasters, and survey-effort weighting. This repository hosts every script, notebook, and helper module required to reproduce the manuscript pipeline—from raw data harmonization to DeepSDM training, MaxEnt baselines, and figure generation.
+Species‑Embedding & Attention Multiscale U‑Net for Species Distribution Modeling (SEAM-SDM) predicts monthly habitat suitability by combining species co-occurrence embeddings, multi-scale environmental rasters, and survey-effort weighting. This repository hosts every script, notebook, and helper module required to reproduce the manuscript pipeline—from raw data harmonization to DeepSDM training, MaxEnt baselines, and figure generation.
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
@@ -17,7 +17,7 @@ Deep Species Distribution Model (DeepSDM) predicts monthly habitat suitability b
 ## Environment Setup
 
 ### Python
-1. Create a Conda environment (or `virtualenv`) on a CUDA-capable machine.
+1. Create a Conda environment on a CUDA-capable machine.
 2. Install dependencies:
    ```bash
    pip install -r requirements.txt
@@ -25,13 +25,12 @@ Deep Species Distribution Model (DeepSDM) predicts monthly habitat suitability b
 3. To exactly match the original experiments, build the Conda environment specified in `python_env.yaml`.
 
 ### R
-1. Activate a dedicated R environment (e.g., `renv`).
-2. Install the packages listed in `requirements_r.txt`, then follow `setup_r_environment.md` to prepare the MaxEnt toolchain.
+1. Install the packages listed in `requirements_r.txt`, then follow `setup_r_environment.md` to prepare the MaxEnt toolchain.
 
 ## External Artifacts on Google Drive
 All pretrained checkpoints, curated datasets, intermediate logs, predictions, and figure assets reside on Google Drive: <https://drive.google.com/drive/folders/1zzJg_q1gTyvoprR7r4iX69xrOYRsJlGR?usp=drive_link>.
 
-Download every archive in that folder and extract it **next to** this repository so the resulting directories sit alongside `DeepSDM/` (for example: `/path/to/projects/DeepSDM`, `/path/to/projects/workspace`, `/path/to/projects/raw`, ...). Configuration files and notebooks assume this relative layout when resolving paths.
+Download every archive in that folder and extract it **inside** this repository so the resulting directories sit under `DeepSDM/` (for example: `/path/to/projects/DeepSDM`, `/path/to/projects/DeepSDM/workspace`, `/path/to/projects/DeepSDM/raw`, ...). Configuration files and notebooks assume this relative layout when resolving paths.
 
 ### Archive contents
 - **`workspace.zip` → `workspace/`** – cached species metadata, occurrence grids, survey-effort rasters, and partition masks consumed by the Lightning data modules during training and evaluation.
@@ -40,7 +39,7 @@ Download every archive in that folder and extract it **next to** this repository
 - **`predicts.zip` → `predicts/`** – DeepSDM prediction rasters (HDF5/PNG) plus auxiliary JSON summaries produced by inference.
 - **`predicts_maxent.zip` → `predicts_maxent/`** – MaxEnt prediction rasters, binary masks, and evaluation tables used during threshold and baseline comparisons.
 - **`plots.zip` → `plots/`** – curated figure assets and intermediate tables for the manuscript and supplementary notebooks.
-- **`raw.z.001`, `raw.z.002`, `raw.z.003` → `raw/`** – multi-part archive containing the raw climate, land-cover, and occurrence sources required by `01_prepare_data.ipynb`. Combine the pieces (for example, `cat raw.z.* > raw.zip && unzip raw.zip`) to materialize the `raw/` directory alongside the repository before running data preparation.
+- **`raw.z.001`, `raw.z.002`, `raw.z.003` → `raw/`** – multi-part archive containing the raw climate, land-cover, and occurrence sources required by `01_prepare_data.ipynb`. Combine the pieces to materialize the `raw/` directory alongside the repository before running data preparation.
 
 ## Repository Layout
 
@@ -58,7 +57,7 @@ Download every archive in that folder and extract it **next to** this repository
 ## Execution Flow
 
 1. **Stage assets**
-   - Download and extract every archive from Google Drive so `workspace/`, `medium/`, `mlruns/`, `predicts/`, `predicts_maxent/`, `plots/`, and `raw/` sit beside the `DeepSDM/` repository folder.
+   - Download and extract every archive from Google Drive so `workspace/`, `medium/`, `mlruns/`, `predicts/`, `predicts_maxent/`, `plots/`, and `raw/` sit inside the `DeepSDM/` repository folder.
    - Verify that `DeepSDM_conf.yaml` paths (e.g., `workspace_dir`, `raw_dir`) point to these sibling directories.
 
 2. **Prepare data — `01_prepare_data.ipynb`**
