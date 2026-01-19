@@ -42,7 +42,7 @@ class PlotUtlis():
 
     def __init__(self, run_id, exp_id):
         # Set the size for the niche raster
-        self.niche_rst_size = 100
+        self.niche_rst_size = 50
 
         # Define various paths for configurations and predictions
         self.conf_path = os.path.join('mlruns', exp_id, run_id, 'artifacts', 'conf')
@@ -71,7 +71,7 @@ class PlotUtlis():
         self.extent_binary_extent = [self.lon_min, self.lon_max, self.lat_min, self.lat_max]
 
         # Load species occurrence points
-        with open(os.path.join(self.predicts_path, 'sp_inf.json'), 'r') as f:
+        with open(os.path.join(self.conf_path, 'species_information.json'), 'r') as f:
             self.sp_info = json.load(f)
         with open(os.path.join(self.conf_path, 'cooccurrence_vector.json')) as f:
             self.coocc_vector = json.load(f)
@@ -119,7 +119,7 @@ class PlotUtlis():
         self.y_pca = 2
 
         # Define default color list
-        self.color_list = ['#4daf4a', '#984ea3', '#ff7f00']
+        self.color_list = ["#a6cee3", "#1f78b4", "#b2df8a", "#33a02c", "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00", "#cab2d6", "#6a3d9a"]
         
         # Define subfolder paths for plots
         self.plot_path = os.path.join('plots', run_id)
@@ -373,8 +373,7 @@ class PlotUtlis():
             output_path = self.plot_path_df_species.replace('[SPECIES]', species)
             feather.write_dataframe(df_species, output_path)
 
-        # 你原本的函式最後一段，僅替換這個 with-block
-        workers = min(8, (os.cpu_count() or 4))  # 適度降一點，HDF5 較穩
+        workers = min(8, (os.cpu_count() or 4))
         n_ok = n_err = 0
         
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -382,7 +381,7 @@ class PlotUtlis():
             for fut in as_completed(futures):
                 sp = futures[fut]
                 try:
-                    fut.result()  # ★ 關鍵：把 thread 內的例外拋回主執行緒
+                    fut.result()
                     print(f"[ok] {sp}")
                     n_ok += 1
                 except Exception as e:
@@ -878,6 +877,7 @@ class PlotUtlis():
 
         df_center = pd.DataFrame(np.vstack(center_allspecies), index=self.species_list_exclude, columns=['PC01', 'PC02'])
         df_center['cluster'] = cluster_labels
+        self.df_nichespace_center_coordinate = df_center
         return df_center
 
     # For Fig5
