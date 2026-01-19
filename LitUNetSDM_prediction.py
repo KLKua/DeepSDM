@@ -15,8 +15,8 @@ import h5py
 class LitUNetSDM(pl.LightningModule):
     def __init__(self, 
                  custom_device, 
-                 yaml_conf = './DeepSDM_conf.yaml', 
-                 tmp_path = './tmp', 
+                 yaml_conf, 
+                 tmp_path, 
                  predict_attention = False  # whether to plot attention score map while predicting results
                 ):
         
