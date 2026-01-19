@@ -59,7 +59,7 @@ class RasterHelper:
         self.day_first = 0
         self.day_last = (self.date_end - self.date_start).days
 
-    def create_extent_binary_from_env_layer(self, input_env, spatial_conf):
+    def create_extent_binary_from_env_layer(self, input_env, spatial_conf, create_extent_binary = True):
         self.spatial_conf = spatial_conf
         # Open source environment layer
         with rasterio.open(input_env) as src:
@@ -76,42 +76,43 @@ class RasterHelper:
         spatial_conf.x_end = self.res_rounder(spatial_conf.x_start + spatial_conf.x_num_cells * out_res)
         spatial_conf.y_end = self.res_rounder(spatial_conf.y_start + spatial_conf.y_num_cells * out_res)
 
-        dst_transform = Affine(out_res, 0, spatial_conf.x_start,
-                               0, -out_res, spatial_conf.y_end)
-        profile = {
-            'driver': 'GTiff',
-            'height': spatial_conf.y_num_cells,
-            'width': spatial_conf.x_num_cells,
-            'count': 1,
-            'dtype': 'float32',
-            'crs': src_crs,
-            'transform': dst_transform,
-            'nodata': self.no_data
-        }
-        med_tif = './workspace/extent_env_example.tif'
-        # Reproject to uniform grid
-        with rasterio.open(input_env) as src, rasterio.open(med_tif, 'w', **profile) as dst:
-            reproject(
-                source=src.read(1),
-                destination=rasterio.band(dst, 1),
-                src_transform=src.transform,
-                src_crs=src.crs,
-                dst_transform=dst_transform,
-                dst_crs=src.crs,
-                resampling=Resampling.bilinear, 
-                src_nodata=src.nodata, 
-                dst_nodata=dst.nodata
-            )
-        # Binarize
-        with rasterio.open(med_tif) as src:
-            arr = src.read(1)
-            arr = np.where(arr == src.nodata, 0, 1)
-            bin_arr = arr.astype('int16')
-            bin_profile = src.profile.copy()
-            bin_profile.update({'dtype':'int16'})
-            out_tif = './workspace/extent_binary.tif'
-            with rasterio.open(out_tif, 'w', **bin_profile) as dst:
-                dst.write(bin_arr, 1)
+        if create_extent_binary:
+            dst_transform = Affine(out_res, 0, spatial_conf.x_start,
+                                   0, -out_res, spatial_conf.y_end)
+            profile = {
+                'driver': 'GTiff',
+                'height': spatial_conf.y_num_cells,
+                'width': spatial_conf.x_num_cells,
+                'count': 1,
+                'dtype': 'float32',
+                'crs': src_crs,
+                'transform': dst_transform,
+                'nodata': self.no_data
+            }
+            med_tif = './workspace/extent_env_example.tif'
+            # Reproject to uniform grid
+            with rasterio.open(input_env) as src, rasterio.open(med_tif, 'w', **profile) as dst:
+                reproject(
+                    source=src.read(1),
+                    destination=rasterio.band(dst, 1),
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=dst_transform,
+                    dst_crs=src.crs,
+                    resampling=Resampling.bilinear, 
+                    src_nodata=src.nodata, 
+                    dst_nodata=dst.nodata
+                )
+            # Binarize
+            with rasterio.open(med_tif) as src:
+                arr = src.read(1)
+                arr = np.where(arr == src.nodata, 0, 1)
+                bin_arr = arr.astype('int16')
+                bin_profile = src.profile.copy()
+                bin_profile.update({'dtype':'int16'})
+                out_tif = './workspace/extent_binary.tif'
+                with rasterio.open(out_tif, 'w', **bin_profile) as dst:
+                    dst.write(bin_arr, 1)
         return spatial_conf
 
     def raw_to_medium_(self, raw_env_tif, medium_env_tif):
