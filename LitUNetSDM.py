@@ -18,8 +18,8 @@ import shutil
 
 class LitUNetSDM(pl.LightningModule):
     def __init__(self, 
-                 yaml_conf = './DeepSDM_conf.yaml', 
-                 tmp_path = './tmp', 
+                 yaml_conf, 
+                 tmp_path, 
                  predict_attention = False  # whether to plot attention score map while predicting results
                 ):
         
