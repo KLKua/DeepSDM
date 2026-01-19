@@ -64,16 +64,14 @@ class CooccurrenceHelper():
         
         # read raw data directly download from gbif
         self.species_raw = pd.read_csv(self.gbif_occurrence_csv, 
-                                       sep = '\t', 
+                                       # sep = '\t', 
                                        usecols = [
                                            'species',
                                            'decimalLatitude',
                                            'decimalLongitude',
                                            'day',
                                            'month',
-                                           'year', 
-                                           'coordinateUncertaintyInMeters', 
-                                           'coordinatePrecision'],
+                                           'year'],
                                        nrows=nrows,
                                        quoting=csv.QUOTE_NONE
                                       )
@@ -83,7 +81,7 @@ class CooccurrenceHelper():
 
         # filter species 
         # change species name
-        species_filter['species'] = species_filter.apply(lambda x: f"{x['species'].split(' ')[0]}_{x['species'].split(' ')[1]}", axis = 1)
+        species_filter['species'] = species_filter.apply(lambda x: f"{x['species'].replace(' ', '_')}", axis = 1)
         if len(self.target_species) != 0:
             species_filter = species_filter[species_filter['species'].isin(self.target_species)].reset_index(drop = True)
 
@@ -101,10 +99,10 @@ class CooccurrenceHelper():
         species_filter = species_filter.query('(decimalLatitude >= @self.y_start) & (decimalLatitude < @self.y_end) & (decimalLongitude >= @self.x_start) & (decimalLongitude < @self.x_end)').reset_index(drop=True)
 
         # filter records by coordinate uncertainty (1000m)
-        species_filter = species_filter[~(species_filter.coordinateUncertaintyInMeters > 1000)].reset_index(drop=True)
+        # species_filter = species_filter[~(species_filter.coordinateUncertaintyInMeters > 1000)].reset_index(drop=True)
 
         # filter records by coordinate precision (0.008333333)
-        species_filter = species_filter[~(species_filter.coordinatePrecision > 0.008333333)].reset_index(drop=True)
+        # species_filter = species_filter[~(species_filter.coordinatePrecision > 0.008333333)].reset_index(drop=True)
 
         # remove duplicate records by date and time
         cols_key = ["species", "decimalLatitude", "decimalLongitude", "year", "month", "day"]
