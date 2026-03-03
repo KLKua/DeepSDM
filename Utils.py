@@ -146,6 +146,7 @@ class PlotUtlis():
         self.plot_path_nichespace_png_sp = os.path.join(self.plot_path_nichespace, 'png', '[SPECIES]', '[SPECIES]_nichespace_[SUFFIX].png')
         self.df_grid_path = os.path.join(self.plot_path_nichespace, 'df_grid.feather')
         self.df_spearman_path = os.path.join(self.plot_path_nichespace, 'df_spearman.csv')
+        self.df_indicator_merged_path = os.path.join(self.plot_path_nichespace, 'df_indicator_merged.csv')
         self.cluster_labels_path = os.path.join(self.plot_path_nichespace_clustering, 'cluster_labels.yaml')
         self.cluster_avg_nichespace_path = os.path.join(self.plot_path_nichespace_clustering, 'cluster_avg_nichespace.yaml')
         self.df_nichespace_center_coordinate_path = os.path.join(self.plot_path_nichespace_clustering, 'nichespecies_center_coordinate.csv')
@@ -786,7 +787,8 @@ class PlotUtlis():
             'maxent_val_f1': 'MaxEnt_F1'
         }, inplace=True)
 
-        return indicator_merged
+        self.df_indicator_merged = indicator_merged.copy()
+        self.df_indicator_merged.to_csv(self.df_indicator_merged_path, index = None)
 
     # For Fig5
     def get_deepsdm_nichespace(self, species_exclude = [], suffix='max'):
@@ -1664,6 +1666,7 @@ class PlotUtlis():
         self.df_env_corr = None
         self.label_to_color = None
         self.df_nichespace_center_coordinate = None
+        self.df_indicator_merged = None
         
         if os.path.exists(self.avg_elev_path):
             self.avg_elev = pd.read_csv(self.avg_elev_path)
@@ -1743,7 +1746,9 @@ class PlotUtlis():
         if os.path.exists(self.species_cluster_env_values_stats_path):
             with open(self.species_cluster_env_values_stats_path, 'r') as f:
                 self.species_cluster_env_values_stats = json.load(f)
-
+        if os.path.exists(self.df_indicator_merged_path):
+            self.df_indicator_merged = pd.read_csv(self.df_indicator_merged_path)
+        
 def create_folder(file_path):
     """
     Utility function to create directories if they do not already exist.
