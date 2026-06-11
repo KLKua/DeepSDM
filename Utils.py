@@ -119,7 +119,8 @@ class PlotUtlis():
         self.y_pca = 2
 
         # Define default color list
-        self.color_list = ["#a6cee3", "#1f78b4", "#b2df8a", "#33a02c", "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00", "#cab2d6", "#6a3d9a"]
+        self.color_list = ['#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02', '#a6761d', '#666666']
+
         
         # Define subfolder paths for plots
         self.plot_path = os.path.join('plots', run_id)
@@ -1464,8 +1465,8 @@ class PlotUtlis():
         """
     
         # ---------- Config ----------
-        n_clusters = 3
-        clusters = list(range(1, n_clusters + 1))
+        n_clusters = 4
+        clusters = list(range(0, n_clusters))
     
         # ---------- Species filtering ----------
         if len(species_exclude) > 0:
@@ -1555,8 +1556,8 @@ class PlotUtlis():
                 c_element.set_color('black')
     
         # X labels
-        ax.set_xticks(clusters)
-        ax.set_xticklabels([f'Cluster {k}' for k in clusters])
+        ax.set_xticks([c + 1 for c in clusters])
+        ax.set_xticklabels([f'Cluster {k+1}' for k in clusters])
     
         # Y label
         ax.set_ylabel(convert_to_env_list_detail([env_plot])[0])
@@ -1564,31 +1565,32 @@ class PlotUtlis():
         # Format y-axis tick labels to 1 decimal places
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.1f}'))
         
-        # --------- Add significance lines + stars ----------
-        # Use data range to place annotation levels above violins
-        y_max = max(max(cluster_env_values[k]) for k in clusters)
-        y_min = min(min(cluster_env_values[k]) for k in clusters)
-        y_step = (y_max - y_min) * 0.07 if (y_max > y_min) else 0.1
+        # # --------- Add significance lines + stars ----------
+        # # Use data range to place annotation levels above violins
+        # y_max = max(max(cluster_env_values[k]) for k in clusters)
+        # y_min = min(min(cluster_env_values[k]) for k in clusters)
+        # y_step = (y_max - y_min) * 0.07 if (y_max > y_min) else 0.1
     
-        # Default order and vertical levels (like your old code)
-        positions = [(1, 2), (1, 3), (2, 3)]
-        y_levels = [y_max + 0.5 * y_step, y_max + 1.5 * y_step, y_max + 2.5 * y_step]
+        # # Default order and vertical levels (like your old code)
+        # positions = [(1, 2), (1, 3), (2, 3)]
+        # y_levels = [y_max + 0.5 * y_step, y_max + 1.5 * y_step, y_max + 2.5 * y_step]
     
-        # Draw lines and stars
-        for i, ((pos1, pos2), y_pos) in enumerate(zip(positions, y_levels)):
-            key = f'Cluster {pos1} vs Cluster {pos2}'
-            if key in pairwise_results:
-                p_value = pairwise_results[key][1]
-                significance = get_significance_stars(p_value)
-                ax.plot([pos1, pos2], [y_pos, y_pos], color='black', linewidth=0.5)
-                if significance == 'n.s.':
-                    ax.text((pos1 + pos2) / 2, y_pos, significance, ha='center', va='bottom', fontsize=5)
-                else:
-                    ax.text((pos1 + pos2) / 2, y_pos, significance, ha='center', va='center', fontsize=5)
+        # # Draw lines and stars
+        # for i, ((pos1, pos2), y_pos) in enumerate(zip(positions, y_levels)):
+        #     key = f'Cluster {pos1} vs Cluster {pos2}'
+        #     if key in pairwise_results:
+        #         p_value = pairwise_results[key][1]
+        #         significance = get_significance_stars(p_value)
+        #         ax.plot([pos1, pos2], [y_pos, y_pos], color='black', linewidth=0.5)
+        #         if significance == 'n.s.':
+        #             ax.text((pos1 + pos2) / 2, y_pos, significance, ha='center', va='bottom', fontsize=5)
+        #         else:
+        #             ax.text((pos1 + pos2) / 2, y_pos, significance, ha='center', va='center', fontsize=5)
     
         # Expand ylim to make room for annotations
-        ax.set_ylim(bottom=min(y_min, ax.get_ylim()[0]), top=y_levels[-1] + 1.5 * y_step)
-    
+        # ax.set_ylim(bottom=min(y_min, ax.get_ylim()[0]), top=y_levels[-1] + 1.5 * y_step)
+        # ax.set_ylim(bottom=min(y_min), top=y_levels[-1])
+        
         # Save plot (same filename pattern as before, now includes 3 clusters)
         plot_output = os.path.join(self.plot_path_nichespace_clustering, f'{env_plot}_violin_species_median_clusters.pdf')
         plt.savefig(plot_output, dpi=500, transparent=True)
