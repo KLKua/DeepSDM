@@ -54,6 +54,14 @@ class LitUNetSDM(pl.LightningModule):
     
     def flatten_list(self, l):
         return [item for sublist in l for item in sublist]
+
+    def _sample_tensor_without_replacement(self, values, sample_size):
+        sample_size = int(sample_size)
+        if sample_size <= 0:
+            return values[:0]
+
+        indice = torch.randperm(values.shape[0], device=values.device)[:sample_size]
+        return values[indice]
     
     def _init_val_step_vars(self):
         self.val_step_outputs = []
@@ -204,23 +212,18 @@ class LitUNetSDM(pl.LightningModule):
             
             true_epoch_eq1 = true_epoch == 1
     
-            # number of occurrence points
-            nop_epoch = true_epoch_eq1.sum() #sum(true_epoch == 1)
             # where no occurrence but WHAT IS THIS k2_use_val <= 1? Surveyed but no occurrence?
             
             # for thoese k2_use_epoch out of extent are set to -9999
             pred_epoch_a_all = pred_epoch[torch.where((~true_epoch_eq1) & (k2_use_epoch >= 0))[0]]
 
-
-            # draw random points from surveyed but no occurrence
-#             pred_epoch_a_sample = random.sample(pred_epoch_a_all, nop_epoch)
-
-            indice = torch.tensor(random.sample(range(pred_epoch_a_all.shape[0]), nop_epoch), dtype=int)
-            pred_epoch_a_sample = pred_epoch_a_all[indice]
-
-        
             # predicted p on those points of occurrence
-            pred_epoch_p_sample = pred_epoch[true_epoch_eq1] #.detach() #.cpu().tolist()
+            pred_epoch_p_all = pred_epoch[true_epoch_eq1] #.detach() #.cpu().tolist()
+
+            # draw the same number of occurrence and pseudo-absence points
+            nop_epoch = min(pred_epoch_p_all.shape[0], pred_epoch_a_all.shape[0])
+            pred_epoch_p_sample = self._sample_tensor_without_replacement(pred_epoch_p_all, nop_epoch)
+            pred_epoch_a_sample = self._sample_tensor_without_replacement(pred_epoch_a_all, nop_epoch)
 
 #             print(pred_epoch_a_all.shape, pred_epoch_a_sample.shape, pred_epoch_p_sample.shape)
 
