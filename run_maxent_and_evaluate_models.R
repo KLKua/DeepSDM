@@ -15,8 +15,8 @@ if (length(args) == 0) {
   stop("At least one argument must be supplied (input file).n", call. = FALSE)
 }
 
-run_id <- "144fa175d5d1428cb9b434cd1a0024f8"     # Unique identifier for this run
-exp_id <- "625518819310735286"                  # Experiment ID
+run_id <- "c13ba82a20194f49b87aa551d0065c05"     # Unique identifier for this run
+exp_id <- "688694454263567151"                  # Experiment ID
 
 # Prepare base directories for the current run
 dir_base_run_id <- file.path("predicts_maxent", run_id)
