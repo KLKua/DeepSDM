@@ -22,3 +22,8 @@ cryptography==41.0.7
 opencv-python-headless==4.11.0.86
 h5py==3.13.0
 umap-learn==0.5.12
+feather-format==0.4.1
+statsmodels==0.14.6
+ipywidgets==8.1.8           # not necessary
+jupyterlab_widgets==3.0.16  # not necessary
+widgetsnbextension==4.0.15  # not necessary
