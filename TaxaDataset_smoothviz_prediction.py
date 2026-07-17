@@ -1,11 +1,9 @@
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
-from torchvision.transforms import ToTensor
-import cv2
 
 class TaxaDataset_smoothviz(Dataset):
-    def __init__(self, idx_species_date, env_stack, embedding, label_stack, subsample_height, subsample_width, num_smoothviz_steps, device):
+    def __init__(self, idx_species_date, env_stack, embedding, label_stack, subsample_height, subsample_width, num_smoothviz_steps, extent_binary, device):
         self.device = device
         self.species_date = label_stack['species_date'][idx_species_date] #e.g.'Acridotheres_cristatellus_2000-01-01'
         self.species = label_stack['species'][idx_species_date]
@@ -48,8 +46,8 @@ class TaxaDataset_smoothviz(Dataset):
                          (self.subsample_width, 2 * self.subsample_width, self.subsample_height, 2 * self.subsample_height), 
                          mode = 'replicate') #.to(torch.float)
         
-        self.extent_binary = F.pad(ToTensor()(cv2.imread('./workspace/extent_binary.tif', cv2.IMREAD_UNCHANGED)), 
-                                   (self.subsample_width, 2 * self.subsample_width, self.subsample_height, 2 * self.subsample_height), 
+        self.extent_binary = F.pad(extent_binary.detach().cpu().to(torch.float32),
+                                   (self.subsample_width, 2 * self.subsample_width, self.subsample_height, 2 * self.subsample_height),
                                    mode = 'replicate')
         self.env = self.env.cpu()
         self.check_valid_indices()

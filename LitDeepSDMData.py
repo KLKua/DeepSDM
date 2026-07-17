@@ -43,6 +43,9 @@ class LitDeepSDMData(pl.LightningDataModule):
         
         self.DeepSDM_conf = DeepSDM_conf
         self.training_conf = SimpleNamespace(**DeepSDM_conf.training_conf)
+        reproducibility_conf = getattr(DeepSDM_conf, 'reproducibility_conf', {})
+        self.seed = int(reproducibility_conf.get('seed', 42))
+        self.deterministic = bool(reproducibility_conf.get('deterministic', True))
         
     def _load_env_list(self, stage_date_list, stage_env_list, stage_species_list):
         # env
@@ -58,7 +61,8 @@ class LitDeepSDMData(pl.LightningDataModule):
             for env_ in stage_env_list:
                 with rasterio.open(os.path.join(self.env_inf['dir_base'], f"{self.env_inf['info'][env_][date_]['tif_span_avg']}")) as f:
                     img_ = ToTensor()(f.read(1))
-                img = img_.where(self.geo_extent == 1, torch.normal(self.env_inf['info'][env_]['mean'], self.env_inf['info'][env_]['sd'], img_.shape))
+                fill = torch.full_like(img_, float(self.env_inf['info'][env_]['mean']))
+                img = img_.where(self.geo_extent == 1, fill)
                 
                 # environment factors which should be normalized
                 if env_ not in self.training_conf.non_normalize_env_list:
@@ -283,8 +287,20 @@ class LitDeepSDMData(pl.LightningDataModule):
 
         self.trainer.strategy.barrier()
         
+    def _make_generator(self, offset=0):
+        generator = torch.Generator()
+        generator.manual_seed(self.seed + int(offset))
+        return generator
+
     def train_dataloader(self):
-        return DataLoader(self.dataset_train, self.training_conf.batch_size_train, shuffle=True, num_workers=0, pin_memory=True)
+        return DataLoader(
+            self.dataset_train,
+            self.training_conf.batch_size_train,
+            shuffle=True,
+            num_workers=0,
+            pin_memory=True,
+            generator=self._make_generator(0),
+        )
 
     def val_dataloader(self):
         return [

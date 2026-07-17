@@ -276,7 +276,7 @@ class RasterHelper:
 
         self.doy_to_month_tifs = None
             
-        for fname in os.listdir(conf['raw_env_dir']):
+        for fname in sorted(os.listdir(conf['raw_env_dir'])):
 
             year = None
             month = None
@@ -440,28 +440,33 @@ class RasterHelper:
         with rasterio.open(tif_path, 'w', **profile) as dst:
             dst.write(final_mask, 1)
         
-    def random_split_train_val(self, train_ratio=0.7):
+    def random_split_train_val(self, train_ratio=0.7, seed=42):
         spatial_conf = self.spatial_conf
         total_grids = spatial_conf.num_of_grid_y * spatial_conf.num_of_grid_x
         num_train_grids = int(np.round(total_grids * train_ratio))
+        rng = np.random.default_rng(seed)
         
-        train_val_partitions = np.where(np.random.uniform(size=(spatial_conf.num_of_grid_y, spatial_conf.num_of_grid_x)) >= train_ratio, 0, 1)
-        
-        while train_val_partitions.sum() != num_train_grids:
-            train_val_partitions = np.where(np.random.uniform(size=train_val_partitions.shape)>=train_ratio, 0, 1).astype(np.uint8)
+        flat_partitions = np.zeros(total_grids, dtype=np.uint8)
+        train_indices = rng.choice(total_grids, size=num_train_grids, replace=False)
+        flat_partitions[train_indices] = 1
+        train_val_partitions = flat_partitions.reshape(spatial_conf.num_of_grid_y, spatial_conf.num_of_grid_x)
             
         np.savetxt('./workspace/partition.txt', train_val_partitions, fmt='%i', delimiter=',')
-        print('Partition saved at ./workspace/partition.txt.')
+        print(f'Partition saved at ./workspace/partition.txt. seed={seed}')
         
-    def random_split_train_val_within_extent_bin(self, train_ratio=0.7):
+    def random_split_train_val_within_extent_bin(self, train_ratio=0.7, seed=42):
         spatial_conf = self.spatial_conf
         extent_bin_partitions = self.convert_extent_binary_to_extent_partition()
+        rng = np.random.default_rng(seed)
         
         num_train_grids = int(np.round(extent_bin_partitions.sum() * train_ratio))
-        train_val_partitions = np.where(np.random.uniform(size=(spatial_conf.num_of_grid_y, spatial_conf.num_of_grid_x)) >= train_ratio, 0, 1)
-        while (train_val_partitions*extent_bin_partitions).sum() != num_train_grids:
-            train_val_partitions = np.where(np.random.uniform(size=train_val_partitions.shape)>=train_ratio, 0, 1).astype(np.uint8)
+        extent_indices = np.flatnonzero(extent_bin_partitions.reshape(-1) == 1)
+        flat_partitions = np.zeros(spatial_conf.num_of_grid_y * spatial_conf.num_of_grid_x, dtype=np.uint8)
+        train_indices = rng.choice(extent_indices, size=num_train_grids, replace=False)
+        flat_partitions[train_indices] = 1
+        train_val_partitions = flat_partitions.reshape(spatial_conf.num_of_grid_y, spatial_conf.num_of_grid_x)
         np.savetxt('./workspace/partition.txt', train_val_partitions, fmt='%i', delimiter=',')
+        print(f'Partition saved at ./workspace/partition.txt. seed={seed}')
 
     def convert_extent_binary_to_extent_partition(self):
         spatial_conf = self.spatial_conf
@@ -658,7 +663,7 @@ class RasterHelper:
 
         while date_target_start <= self.date_end:
             species_filter_day = species_filter[(species_filter.daysincebegin < day_target_end) & (species_filter.daysincebegin >= day_target_start)]
-            week_list = list(set(species_filter_day.week))
+            week_list = sorted(set(species_filter_day.week))
 
             rst_time_span = np.zeros([extent_binary.shape[0], extent_binary.shape[1]])
             
@@ -843,7 +848,7 @@ class RasterHelper:
                 if not os.path.isdir(path):
                     os.makedirs(path)  
             
-        for fname in os.listdir(conf['raw_env_dir']):
+        for fname in sorted(os.listdir(conf['raw_env_dir'])):
             every_year = False
             # Filter files based on the regex pattern
             matched = regex.search(fname)

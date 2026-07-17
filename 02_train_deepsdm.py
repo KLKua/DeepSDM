@@ -1,4 +1,9 @@
+import os
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 import time
+import random
+import numpy as np
+import torch
 import pytorch_lightning as pl
 from types import SimpleNamespace
 import mlflow
@@ -13,6 +18,29 @@ yaml_conf = './DeepSDM_conf.yaml'
 with open(yaml_conf, 'r') as f:
     DeepSDM_conf = yaml.load(f, Loader = yaml.FullLoader)
 DeepSDM_conf = SimpleNamespace(**DeepSDM_conf)
+
+reproducibility_conf = getattr(DeepSDM_conf, 'reproducibility_conf', {})
+SEED = int(reproducibility_conf.get('seed', 42))
+DETERMINISTIC = bool(reproducibility_conf.get('deterministic', True))
+
+pl.seed_everything(SEED, workers=True)
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(SEED)
+
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = DETERMINISTIC
+if hasattr(torch.backends, 'cuda') and hasattr(torch.backends.cuda, 'matmul'):
+    torch.backends.cuda.matmul.allow_tf32 = False
+if hasattr(torch.backends.cudnn, 'allow_tf32'):
+    torch.backends.cudnn.allow_tf32 = False
+if DETERMINISTIC:
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=True)
+    except TypeError:
+        torch.use_deterministic_algorithms(True)
 
 # Define timelog
 timelog = time.strftime('%Y%m%d%H%M%S', time.localtime())
@@ -60,6 +88,8 @@ trainer = pl.Trainer(
     check_val_every_n_epoch = trainer_conf.check_val_every_n_epoch,
     strategy = DDPStrategy(static_graph=True), # use 'ddp_fork_find_unused_parameters_true' instead on jupyter or colab
     precision = trainer_conf.precision, 
+    deterministic = DETERMINISTIC,
+    benchmark = False,
     callbacks = [checkpoint_callback, early_stop_callback], 
     logger = pl.loggers.MLFlowLogger(experiment_name = DeepSDM_conf.training_conf['experiment_name'], run_name = timelog, log_model = True)
 )

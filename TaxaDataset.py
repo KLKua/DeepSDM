@@ -1,7 +1,6 @@
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
-import torchvision.transforms as transforms
 import numpy as np
 from types import SimpleNamespace
 import os
@@ -18,6 +17,9 @@ class TaxaDataset(Dataset):
         self.split = torch.tensor(np.loadtxt(os.path.join('./workspace', 'partition.txt'), delimiter = ',')).to(torch.int)
         self.extent_split = torch.tensor(np.loadtxt(os.path.join('./workspace', 'extent_partition.txt'), delimiter = ',')).to(torch.int)
         self.training_conf = SimpleNamespace(**DeepSDM_conf.training_conf)
+        reproducibility_conf = getattr(DeepSDM_conf, 'reproducibility_conf', {})
+        self.seed = int(reproducibility_conf.get('seed', 42))
+        self.current_epoch = 0
 
         if trainorval == 'train':
             self.trainorval = 1
@@ -25,6 +27,8 @@ class TaxaDataset(Dataset):
         else:
             self.trainorval = 0
             self.random_stack_num = self.training_conf.num_val_subsample_stacks
+        self.stage_seed_offset = 0 if trainorval == 'train' else 1_000_000
+        self.crop_epoch_multiplier = 1_000_003 if trainorval == 'train' else 0
         
         self.height_original = label_stack['tensor'].shape[1]
         self.width_original = label_stack['tensor'].shape[2]
@@ -97,11 +101,32 @@ class TaxaDataset(Dataset):
 #         torch.cuda.synchronize()
 #         print(time.time() - starttime)
 #         print('########## STACKS ##########')
-        self.random_transform = transforms.Compose([
-            transforms.RandomCrop(size = (self.training_conf.subsample_height, self.training_conf.subsample_width))
-        ])
-
         self.filter_split_element()
+
+    def set_epoch(self, epoch):
+        self.current_epoch = int(epoch)
+
+    def _deterministic_crop(self, tensor, index):
+        th = self.training_conf.subsample_height
+        tw = self.training_conf.subsample_width
+        h, w = tensor.shape[-2:]
+
+        if h < th or w < tw:
+            raise ValueError(f'Crop size ({th}, {tw}) is larger than tensor size ({h}, {w}).')
+        if h == th and w == tw:
+            return tensor
+
+        generator = torch.Generator()
+        generator.manual_seed(
+            self.seed
+            + self.stage_seed_offset
+            + self.crop_epoch_multiplier * self.current_epoch
+            + int(index)
+        )
+        top = torch.randint(0, h - th + 1, (1,), generator=generator).item()
+        left = torch.randint(0, w - tw + 1, (1,), generator=generator).item()
+
+        return tensor[..., top:top + th, left:left + tw]
         
     def __getitem__(self, index):
         
@@ -131,7 +156,7 @@ class TaxaDataset(Dataset):
         labels = torch.unsqueeze(labels, axis=0)
 
         stacked_all = torch.cat([inputs, labels, k2], axis = 1)
-        stacked_all = self.random_transform(stacked_all)
+        stacked_all = self._deterministic_crop(stacked_all, index)
         inputs_transform = stacked_all[:, 0:inputs.shape[1]]
         labels_transform = stacked_all[:, inputs.shape[1]:(inputs.shape[1] + labels.shape[1])]
         k2_transform = stacked_all[:, (inputs.shape[1] + labels.shape[1]):(inputs.shape[1] + labels.shape[1] + k2.shape[1])]

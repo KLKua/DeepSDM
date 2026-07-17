@@ -63,7 +63,10 @@ class TrainEmbedding:
         self.num_vector = embedding_conf.num_vector
         self.num_neg = embedding_conf.num_neg
         self.epochs = embedding_conf.epochs
+        self.seed = int(getattr(embedding_conf, 'seed', 42))
+        self.deterministic = bool(getattr(embedding_conf, 'deterministic', True))
         self.CreateDataset = CreateDataset
+        self.py_random = random.Random(self.seed)
         self.EmbeddingModel = EmbeddingModel
 
         self.output_dir = output_dir
@@ -73,6 +76,21 @@ class TrainEmbedding:
         
         self.idx2species_file = idx2species_file
         self.cooccurrence_counts_file = cooccurrence_counts_file
+
+    def _set_seed(self):
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(self.seed)
+
+        if self.deterministic:
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+            try:
+                torch.use_deterministic_algorithms(True, warn_only=True)
+            except TypeError:
+                torch.use_deterministic_algorithms(True)
 
     def _get_idx_species(self):
         
@@ -126,11 +144,22 @@ class TrainEmbedding:
 
     def setup(self):
 
+        self._set_seed()
+        self.py_random = random.Random(self.seed)
+        self.torch_generator = torch.Generator()
+        self.torch_generator.manual_seed(self.seed)
+
         self._get_idx_species()
         self.dataset = self.CreateDataset(self.Xs, self.ys)
                   
         # Model training
-        self.train_dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True)
+        self.train_dataloader = DataLoader(
+            self.dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            pin_memory=True,
+            generator=self.torch_generator,
+        )
         self.EM = self.EmbeddingModel(len(self.idx2species), self.num_vector)
         self.dev = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         self.optimizer = torch.optim.AdamW(self.EM.parameters())  # learning rate
@@ -150,7 +179,7 @@ class TrainEmbedding:
                 # Negative sampling for column
 #                 neg_smpls = np.zeros(self.num_neg)
 #                 for i in range(train_batch.shape[0]):
-#                     delta = random.sample(list(range(len(self.idx2species))), self.num_neg)
+#                     delta = self.py_random.sample(list(range(len(self.idx2species))), self.num_neg)
 #                     neg_smpls = np.vstack([neg_smpls, delta])
 #                 neg_cols = torch.tensor(neg_smpls[1:].reshape(-1), dtype=torch.long)
 #                 neg_rows = train_batch[:, 0].repeat(self.num_neg)
@@ -159,12 +188,15 @@ class TrainEmbedding:
                 # minor expelling each other in the cooccurrence groups
                 pseudo_neg1_smpls = []
                 for i in range(train_batch.shape[0]):
-                    delta = random.sample(range(len(self.idx2species)), self.num_neg)
+                    delta = self.py_random.sample(range(len(self.idx2species)), self.num_neg)
                     pseudo_neg1_smpls.extend(delta)
-                pseudo_neg1_idxs = torch.vstack([train_batch[:, 0].repeat(self.num_neg), torch.tensor(pseudo_neg1_smpls)])
+                pseudo_neg1_idxs = torch.vstack([train_batch[:, 0].repeat(self.num_neg), torch.tensor(pseudo_neg1_smpls, dtype=torch.long)])
                 
                 # minor expelling each other in the non-cooccurrence groups
-                pseudo_neg2_idxs = torch.from_numpy(self.nXs[random.sample(range(self.nXs.shape[0]), min(self.nXs.shape[0], self.num_neg * train_batch.shape[0]))].reshape(2, -1))
+                pseudo_neg2_size = min(self.nXs.shape[0], self.num_neg * train_batch.shape[0])
+                pseudo_neg2_idxs = torch.from_numpy(
+                    self.nXs[self.py_random.sample(range(self.nXs.shape[0]), pseudo_neg2_size)].reshape(2, -1)
+                ).long()
 
                 neg_idxs = torch.hstack([pseudo_neg1_idxs, pseudo_neg2_idxs])
 
@@ -229,7 +261,7 @@ class TrainEmbedding:
             sp_all.append(sp)
         df = pd.DataFrame(list_all)
 
-        reducer = umap.UMAP(n_neighbors=15)
+        reducer = umap.UMAP(n_neighbors=n_neighbors, random_state=self.seed)
         embedding_umap = reducer.fit_transform(df.values)
 
         fig, ax = plt.subplots()

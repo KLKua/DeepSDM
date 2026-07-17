@@ -3,7 +3,6 @@ import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-import random
 import pytorch_lightning as pl
 from Unet import Unet
 from types import SimpleNamespace
@@ -32,6 +31,9 @@ class LitUNetSDM(pl.LightningModule):
             DeepSDM_conf = SimpleNamespace(**yaml.load(f, Loader = yaml.FullLoader))
         self.DeepSDM_conf = DeepSDM_conf
         self.training_conf = SimpleNamespace(**DeepSDM_conf.training_conf)
+        reproducibility_conf = getattr(DeepSDM_conf, 'reproducibility_conf', {})
+        self.seed = int(reproducibility_conf.get('seed', 42))
+        self.deterministic = bool(reproducibility_conf.get('deterministic', True))
         
         self.model = Unet(num_vector = DeepSDM_conf.embedding_conf['num_vector'],
                           num_env = len(self.training_conf.env_list), 
@@ -52,15 +54,32 @@ class LitUNetSDM(pl.LightningModule):
         optimizer = torch.optim.AdamW(self.model.parameters(), lr = self.training_conf.learning_rate)
         return optimizer
     
+    def _set_dataset_epoch(self, epoch):
+        datamodule = getattr(self.trainer, 'datamodule', None)
+        if datamodule is None:
+            return
+        for dataset_name in ('dataset_train', 'dataset_train_on_val', 'dataset_val'):
+            dataset = getattr(datamodule, dataset_name, None)
+            if dataset is not None and hasattr(dataset, 'set_epoch'):
+                dataset.set_epoch(epoch)
+
+    def on_train_epoch_start(self):
+        self._set_dataset_epoch(self.current_epoch)
+
+    def on_validation_epoch_start(self):
+        self._set_dataset_epoch(self.current_epoch)
+
     def flatten_list(self, l):
         return [item for sublist in l for item in sublist]
 
-    def _sample_tensor_without_replacement(self, values, sample_size):
+    def _sample_tensor_without_replacement(self, values, sample_size, seed):
         sample_size = int(sample_size)
         if sample_size <= 0:
             return values[:0]
 
-        indice = torch.randperm(values.shape[0], device=values.device)[:sample_size]
+        generator = torch.Generator()
+        generator.manual_seed(int(seed))
+        indice = torch.randperm(values.shape[0], generator=generator)[:sample_size].to(values.device)
         return values[indice]
     
     def _init_val_step_vars(self):
@@ -222,8 +241,10 @@ class LitUNetSDM(pl.LightningModule):
 
             # draw the same number of occurrence and pseudo-absence points
             nop_epoch = min(pred_epoch_p_all.shape[0], pred_epoch_a_all.shape[0])
-            pred_epoch_p_sample = self._sample_tensor_without_replacement(pred_epoch_p_all, nop_epoch)
-            pred_epoch_a_sample = self._sample_tensor_without_replacement(pred_epoch_a_all, nop_epoch)
+            dataset_offset = 0 if dataset == 'train' else 10_000_000
+            sample_seed = self.seed + self.current_epoch * 1_000_003 + dataset_offset + idx_species_date * 10
+            pred_epoch_p_sample = self._sample_tensor_without_replacement(pred_epoch_p_all, nop_epoch, sample_seed + 1)
+            pred_epoch_a_sample = self._sample_tensor_without_replacement(pred_epoch_a_all, nop_epoch, sample_seed + 2)
 
 #             print(pred_epoch_a_all.shape, pred_epoch_a_sample.shape, pred_epoch_p_sample.shape)
 
@@ -433,7 +454,10 @@ class LitUNetSDM(pl.LightningModule):
             y, x = torch.where((extent == 1) & (label == 0))
             num_all = len(y)
 #             random_num = np.random.choice(num_all, 10000, replace = False) # 隨機選val部份的所有點位（只有陸地）中的 10000個點位
-            random_indice = torch.tensor(random.sample(range(num_all), 10000), dtype=int)
+            sample_size = min(10000, num_all)
+            generator = torch.Generator()
+            generator.manual_seed(self.seed + self.current_epoch * 100_000 + dataloader_idx)
+            random_indice = torch.randperm(num_all, generator=generator)[:sample_size].to(self.device)
             bg = torch.zeros_like(partition, device=self.device) #這是pseudo-absence的圖片
             bg[y[random_indice], x[random_indice]] = 1 # bg這個影像中，如果是選到的pseudo-absence值是1; 其餘是0
 
@@ -724,7 +748,7 @@ class LitUNetSDM(pl.LightningModule):
             for cb in self.trainer.callbacks:
                 if isinstance(cb, ModelCheckpoint):
                     top_k_avg_state_dict = None
-                    for model_path, monitered_value in cb.best_k_models.items():
+                    for model_path, monitered_value in sorted(cb.best_k_models.items(), key=lambda item: item[0]):
                         
                         state_dict = torch.load(model_path)['state_dict']
                         if top_k_avg_state_dict is None:

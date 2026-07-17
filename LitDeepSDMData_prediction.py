@@ -61,7 +61,8 @@ class LitDeepSDMData(pl.LightningDataModule):
             for env_ in stage_env_list:
                 with rasterio.open(os.path.join(self.env_inf['dir_base'], f"{self.env_inf['info'][env_][date_]['tif_span_avg']}")) as f:
                     img_ = ToTensor()(f.read(1)).to(self.device)
-                img = img_.where(self.geo_extent.to(self.device) == 1, torch.normal(self.env_inf['info'][env_]['mean'], self.env_inf['info'][env_]['sd'], img_.shape).to(self.device))
+                fill = torch.full_like(img_, float(self.env_inf['info'][env_]['mean']))
+                img = img_.where(self.geo_extent.to(self.device) == 1, fill)
                 
                 # environment factors which should be normalized
                 if env_ not in self.training_conf.non_normalize_env_list:
@@ -163,6 +164,7 @@ class LitDeepSDMData(pl.LightningDataModule):
                     self.training_conf.subsample_height, 
                     self.training_conf.subsample_width, 
                     self.training_conf.num_predict_steps, 
+                    self.geo_extent,
                     self.device
                 )
             )

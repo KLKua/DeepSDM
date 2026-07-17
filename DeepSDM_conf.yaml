@@ -5,7 +5,12 @@ meta_json_files:
   sp_inf: ./workspace/species_information.json
   k_inf: ./workspace/k_information.json
   co_vec: ./workspace/cooccurrence_vector.json
-  
+
+# reproducibility configurations
+reproducibility_conf:
+  seed: 42
+  deterministic: true
+
 # training configurations
 training_conf:
   batch_size_train: 150

@@ -42,6 +42,7 @@ class LitUNetSDM(pl.LightningModule):
     
 
     def predict(self, dataloaders_predict=[], datamodule=None, output_dir='./predicts', ref_geotiff=None):
+        self.eval()
         # check if there's specified ref_geotiff
         if ref_geotiff is None:
             ref_geotiff = self.DeepSDM_conf.geo_extent_file

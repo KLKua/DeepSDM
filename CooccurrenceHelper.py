@@ -150,7 +150,7 @@ class CooccurrenceHelper():
 #             print("Aggregating...", t,x,y, end='\r')
 
         # order: t, x, y
-        sp_filter.groupby(['daysincebeginUnit', 'decimalLongitudeUnit', 'decimalLatitudeUnit']).apply(coocurr_agg, self.data_unit)
+        sp_filter.groupby(['daysincebeginUnit', 'decimalLongitudeUnit', 'decimalLatitudeUnit'], sort=True).apply(coocurr_agg, self.data_unit)
         print(f'Aggregating data costs {time.time() - start_time} seconds.')
         
     def count_cooccurrence_mod(self, cooccurrence_counts_file='cooccurrence.csv'):
@@ -158,11 +158,11 @@ class CooccurrenceHelper():
         data_unit = self.data_unit
         primary_indices = {}
         cooccur_counts_df = None
-        for t in data_unit:
+        for t in sorted(data_unit):
             len_t = max(data_unit)
-            for x in data_unit[t]:
+            for x in sorted(data_unit[t]):
                 len_x = max(data_unit[t])
-                for y in data_unit[t][x]:
+                for y in sorted(data_unit[t][x]):
                     len_y = max(data_unit[t][x])
                     print(f'Counting... {t}/{len_t}, {x}/{len_x}, {y}/{len_y}', end='\r')
 
@@ -222,8 +222,9 @@ class CooccurrenceHelper():
         sp_combs_df = pd.DataFrame(np.array(np.meshgrid(sp_list, sp_list)).T.reshape(-1, 2), columns=['sp1', 'sp2'])
         sp_combs_df['counts'] = 0
         
-        cooccur_counts_df = pd.concat([cooccur_counts_df, sp_combs_df])
-        cooccur_counts_df = cooccur_counts_df.groupby(['sp1', 'sp2']).head(1)
+        cooccur_counts_df = pd.concat([cooccur_counts_df, sp_combs_df], ignore_index=True)
+        cooccur_counts_df = cooccur_counts_df.groupby(['sp1', 'sp2'], sort=True).head(1)
+        cooccur_counts_df = cooccur_counts_df.sort_values(['sp1', 'sp2']).reset_index(drop=True)
         
         cooccur_counts_df.to_csv(os.path.join(self.cooccurrence_dir, cooccurrence_counts_file), sep='\t', index=False)
         print(f'File: {os.path.join(self.cooccurrence_dir, cooccurrence_counts_file)} saved.')
