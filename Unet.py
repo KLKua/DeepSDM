@@ -175,8 +175,7 @@ class Unet(nn.Module):
         conv4 = F.leaky_relu(self.conv4_3(merge4))
         conv4 = F.group_norm(conv4, num_groups = 4)
         conv4 = F.leaky_relu(self.conv4_2(conv4))
-        drop4 = F.dropout(conv4)
-        
+        drop4 = F.dropout(conv4, training=self.training)        
         
         up7 = F.interpolate(drop4, scale_factor = 2)
         conv7 = F.leaky_relu(self.conv7_1(up7))
