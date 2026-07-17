@@ -41,7 +41,11 @@ class LitUNetSDM(pl.LightningModule):
         self.predict_attention = predict_attention
     
 
-    def predict(self, dataloaders_predict=[], datamodule=None, output_dir='./predicts', ref_geotiff=os.path.join('./workspace', 'extent_binary.tif')):
+    def predict(self, dataloaders_predict=[], datamodule=None, output_dir='./predicts', ref_geotiff=None):
+        # check if there's specified ref_geotiff
+        if ref_geotiff is None:
+            ref_geotiff = self.DeepSDM_conf.geo_extent_file
+        
         def setup_output_dirs(base_dir, meta_files, subdirs):
             os.makedirs(base_dir, exist_ok=True)
             with open(os.path.join(base_dir, 'DeepSDM_conf.yaml'), 'w') as f:
