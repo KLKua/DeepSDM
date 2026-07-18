@@ -1,2 +1,11 @@
 
 .ipynb_checkpoints/
+__pycache__/
+medium/
+mlruns/
+plots/
+predicts/
+predicts_maxent/
+raw/
+tmp/
+workspace/
