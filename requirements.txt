@@ -5,12 +5,11 @@ cloudpickle==3.1.2
 defusedxml==0.7.1
 gitpython==3.1.31
 ipython==9.13.0
-matplotlib==3.10.9         
-numpy==1.26.4         
-packaging==26.0
+matplotlib==3.10.9
+numpy==1.26.4
+packaging==24.0
 prometheus-client==0.25.0
 protobuf==4.24.4
-pyopenssl
 pytorch-lightning==2.5.1.post0
 pyyaml==6.0.3
 rasterio==1.4.3
@@ -24,6 +23,6 @@ h5py==3.13.0
 umap-learn==0.5.12
 feather-format==0.4.1
 statsmodels==0.14.6
-ipywidgets==8.1.8           # not necessary
-jupyterlab_widgets==3.0.16  # not necessary
-widgetsnbextension==4.0.15  # not necessary
+ipywidgets==8.1.8
+jupyterlab_widgets==3.0.16
+widgetsnbextension==4.0.15
