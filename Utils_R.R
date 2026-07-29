@@ -141,7 +141,7 @@ load_env_month <- function(env_list, env_info, date, DeepSDM_conf) {
   names(env_month) <- env_list
   for (env in env_list) {
     if (!(env %in% DeepSDM_conf$training_conf$non_normalize_env_list)) {
-      values(env_month[[env]]) <- (values(env_month[[env]]) - env_info$info[[env]]$mean) / env_info$info[[env]]$sd
+      raster::values(env_month[[env]]) <- (raster::values(env_month[[env]]) - env_info$info[[env]]$mean) / env_info$info[[env]]$sd
     }
   }
   return(env_month)
@@ -160,7 +160,7 @@ load_env_allmonth <- function(env_list, env_info, date_list_all_selectmonth, Dee
     names(env_allmonth) <- env_list
     lapply(env_list, function(env) {
       if (!(env %in% DeepSDM_conf$training_conf$non_normalize_env_list)) {
-        values(env_allmonth[[env]]) <<- (values(env_allmonth[[env]]) - env_info$info[[env]]$mean) / env_info$info[[env]]$sd
+        raster::values(env_allmonth[[env]]) <<- (raster::values(env_allmonth[[env]]) - env_info$info[[env]]$mean) / env_info$info[[env]]$sd
       }
     })
     env_allmonth_list[[date]] <- env_allmonth
