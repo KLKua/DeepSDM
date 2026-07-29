@@ -880,6 +880,7 @@ class PlotUtlis():
 
         df_center = pd.DataFrame(np.vstack(center_allspecies), index=self.species_list_exclude, columns=['PC01', 'PC02'])
         df_center['cluster'] = cluster_labels
+        self.df_nichespace_center_coordinate = df_center.copy()
         return df_center
 
     # For Fig5
