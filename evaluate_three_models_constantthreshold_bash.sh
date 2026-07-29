@@ -1,0 +1,25 @@
+Rscript evaluate_three_models_constantthreshold.R 1 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 6 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 11 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 16 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 21 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 26 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 31 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 36 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 41 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 46 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 51 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 56 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 61 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 66 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 71 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 76 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 81 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 86 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 91 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 96 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 101 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 106 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 111 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 116 sjsdm_conf.yml &
+Rscript evaluate_three_models_constantthreshold.R 121 sjsdm_conf.yml

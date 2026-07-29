@@ -1,0 +1,54 @@
+run_id: de4f516ac0ff4a2b999bad82dcb2b6f0
+exp_id: "688694454263567151"
+
+# The active Python environment must contain a CUDA-enabled PyTorch build that
+# sjSDM can use. Leave blank to use RETICULATE_PYTHON / the active environment.
+reticulate_python: "/work/markyuhina/miniconda3/envs/SEAM-SDM-PYTHON/bin/python"
+
+output_root: predicts_sjsdm/de4f516ac0ff4a2b999bad82dcb2b6f0
+model_tag: sjsdm_dnn_fullcov_gpu
+
+# Rebuild the joint training matrices from the existing occurrence HDF5 rasters.
+rebuild_training_data: false
+
+training_data:
+  # The eta > 0 target-group footprint is reconstructed from the union of all
+  # bird-species monthly occurrence rasters available in sp_info. Row selection
+  # is completed before the 121-species focal response matrix is constructed.
+  #
+  # 0 = use every eta > 0 row in the training partition (recommended primary).
+  # A positive value = uniformly downsample that footprint, with the total quota
+  # balanced across training months. Sampling never depends on focal Y/rowSums(Y).
+  max_sampling_rows_total: 0
+
+  # Optional explicit subset used only to define the footprint. Leave omitted to
+  # use every species available in sp_info$file_name.
+  # footprint_species_list: []
+
+  seed: 42
+
+model:
+  hidden: [64, 64]
+  activation: relu
+  dropout: 0.10
+
+  # Fixed regularization settings. The external partition validation cells do
+  # not enter model fitting or gradient updates.
+  lambda_coef: 0.01
+  alpha_coef: 0.50
+  lambda_cov: 0.01
+  alpha_cov: 0.50
+
+  iter: 300
+  step_size: 4096
+  learning_rate: 0.01
+  sampling: 100
+  data_loader_cores: 0
+  scheduler_patience: 0
+  lr_reduce_factor: 0.50
+  early_stopping_training: 50
+  seed: 20260302
+
+prediction:
+  chunk_size: 20000
+  overwrite: false
