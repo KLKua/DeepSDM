@@ -1,0 +1,44 @@
+run_id: 144fa175d5d1428cb9b434cd1a0024f8
+exp_id: "625518819310735286"
+
+output_root: predicts_hmsc/144fa175d5d1428cb9b434cd1a0024f8
+model_tag: hmsc_probit_uniform_background
+
+# Reuse cached data/model unless explicitly rebuilt.
+rebuild_training_data: true
+refit_model: true
+
+training_data:
+  # Uniform terrestrial cell-month backgrounds, balanced across months.
+  # This follows the same simple background principle as the MaxEnt baseline.
+  n_background_rows_total: 10000
+
+  # Presence-selected cell-month rows are balanced across the 121 focal species.
+  # Recorded species = 1; unrecorded species = NA. Set 0 to retain all rows.
+  max_presence_rows_total: 0
+  seed: 42
+
+model:
+  # One sampling-unit random level with a fixed number of latent factors.
+  latent_factors: 2
+
+  # Starting MCMC settings. Increase samples/transient/thin if diagnostics
+  # indicate poor mixing or convergence.
+  samples: 500
+  transient: 1000
+  thin: 5
+  n_chains: 4
+  n_parallel: 4
+  use_socket: false
+  verbose: 100
+  seed: 42
+
+prediction:
+  chunk_size: 20000
+  overwrite: false
+
+evaluation:
+  species_batch_size: 5
+  seed: 42
+  write_binary_h5: true
+  write_binary_png: true
