@@ -1,11 +1,11 @@
-run_id: de4f516ac0ff4a2b999bad82dcb2b6f0
-exp_id: "688694454263567151"
+run_id: 7222554cbec140879fc9afd432d539ac
+exp_id: "578676681625834542"
 
 # The active Python environment must contain a CUDA-enabled PyTorch build that
 # sjSDM can use. Leave blank to use RETICULATE_PYTHON / the active environment.
 reticulate_python: "/work/markyuhina/miniconda3/envs/SEAM-SDM-PYTHON/bin/python"
 
-output_root: predicts_sjsdm/de4f516ac0ff4a2b999bad82dcb2b6f0
+output_root: predicts_sjsdm/7222554cbec140879fc9afd432d539ac
 model_tag: sjsdm_dnn_fullcov_gpu
 
 # Rebuild the joint training matrices from the existing occurrence HDF5 rasters.
@@ -47,7 +47,7 @@ model:
   scheduler_patience: 0
   lr_reduce_factor: 0.50
   early_stopping_training: 50
-  seed: 20260302
+  seed: 42
 
 prediction:
   chunk_size: 20000
