@@ -139,7 +139,8 @@ class TrainEmbedding:
         self.idx2species = idx2species
         self.Xs = Xs
         self.ys = ys
-        self.nXs = np.array(nXs)
+        # Keep the pair axis even when there are no zero-count pairs.
+        self.nXs = np.asarray(nXs, dtype=np.int64).reshape(-1, 2)
 
 
     def setup(self):
@@ -190,13 +191,19 @@ class TrainEmbedding:
                 for i in range(train_batch.shape[0]):
                     delta = self.py_random.sample(range(len(self.idx2species)), self.num_neg)
                     pseudo_neg1_smpls.extend(delta)
-                pseudo_neg1_idxs = torch.vstack([train_batch[:, 0].repeat(self.num_neg), torch.tensor(pseudo_neg1_smpls, dtype=torch.long)])
+                # Each sampled block belongs to one positive pair's first species.
+                pseudo_neg1_idxs = torch.vstack([train_batch[:, 0].repeat_interleave(self.num_neg), torch.tensor(pseudo_neg1_smpls, dtype=torch.long)])
                 
                 # minor expelling each other in the non-cooccurrence groups
                 pseudo_neg2_size = min(self.nXs.shape[0], self.num_neg * train_batch.shape[0])
-                pseudo_neg2_idxs = torch.from_numpy(
-                    self.nXs[self.py_random.sample(range(self.nXs.shape[0]), pseudo_neg2_size)].reshape(2, -1)
-                ).long()
+                if pseudo_neg2_size > 0:
+                    sampled_pairs = self.nXs[
+                        self.py_random.sample(range(self.nXs.shape[0]), pseudo_neg2_size)
+                    ]
+                    # Transpose whole pairs; reshape would mix their species.
+                    pseudo_neg2_idxs = torch.from_numpy(sampled_pairs.T).long()
+                else:
+                    pseudo_neg2_idxs = torch.empty((2, 0), dtype=torch.long)
 
                 neg_idxs = torch.hstack([pseudo_neg1_idxs, pseudo_neg2_idxs])
 
