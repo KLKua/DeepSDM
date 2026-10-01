@@ -9,3 +9,5 @@ predicts_maxent/
 raw/
 tmp/
 workspace/
+virtual_species_output/
+predicts_hmsc/
