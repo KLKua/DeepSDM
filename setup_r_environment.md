@@ -1,5 +1,17 @@
 # Install All the R Packages through Bash
 
+## Run everything at once
+Instead of copying each command one by one, run the installer script from this
+repository root:
+
+```bash
+./setup_r_environment.sh
+```
+
+The script installs the Ubuntu system dependencies, R, Java, and these R
+packages in one run: `raster`, `dismo`, `pROC`, `tidyverse`, `rjson`, `yaml`,
+`rJava`, `hdf5r`, and `arrow`.
+
 ## 1. Install the Latest R
 Follow the instructions on the [R Project website](https://cran.csie.ntu.edu.tw/).
 

@@ -26,3 +26,6 @@ statsmodels==0.14.6
 ipywidgets==8.1.8
 jupyterlab_widgets==3.0.16
 widgetsnbextension==4.0.15
+pyro-ppl==1.9.1
+torch-optimizer==0.3.0
+madgrad==1.3
