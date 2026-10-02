@@ -637,13 +637,13 @@ safe_best_threshold <- function(pred_1, pred_0) {
     ret = "threshold", transpose = FALSE
   )
   threshold <- as.numeric(unlist(threshold, use.names = FALSE))
-  threshold <- threshold[is.finite(threshold)]
+  threshold <- threshold[!is.na(threshold)]
   if (length(threshold) == 0L) NA_real_ else min(threshold)
 }
 
 safe_threshold_indicators <- function(pred_1, pred_0, threshold) {
   x <- clean_binary_groups(pred_1, pred_0)
-  if (!is.finite(threshold) || length(x$pred_1) == 0L || length(x$pred_0) == 0L) {
+  if (is.na(threshold) || length(x$pred_1) == 0L || length(x$pred_0) == 0L) {
     return(c(TSS = NA_real_, kappa = NA_real_, f1 = NA_real_))
   }
   actual <- c(rep(1L, length(x$pred_1)), rep(0L, length(x$pred_0)))
@@ -684,7 +684,7 @@ write_binary_model_prediction <- function(
     model_name, species, date, rst, threshold, presence_xy,
     binary_h5_root, binary_png_root, extent_binary, run_id,
     write_h5 = TRUE, write_png = TRUE) {
-  if (!is.finite(threshold)) return(invisible(FALSE))
+  if (is.na(threshold)) return(invisible(FALSE))
   log_binary(
     dir_run_id_h5_binary = file.path(binary_h5_root, model_name),
     dir_run_id_png_binary = file.path(binary_png_root, model_name),
