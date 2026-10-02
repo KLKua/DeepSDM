@@ -81,7 +81,7 @@ calculate_roc <- function(px, p, bg) {
     pred_0 <- raster::extract(px, bg)
     actual_1 <- rep(1, nrow(p))
     actual_0 <- rep(0, nrow(bg))
-    roc_obj <- roc(c(actual_1, actual_0), c(pred_1, pred_0))
+    roc_obj <- roc(c(actual_1, actual_0), c(pred_1, pred_0), level = c(0, 1), direction = "<", quiet = TRUE)
     return(roc_obj$auc[1])
   }
 }
@@ -101,7 +101,7 @@ calculate_indicator <- function(rst) {
   train_pred_0 <- raster::extract(rst, xy_pa_month_sample_trainsplit)
   train_actual_1 <- rep(1, nrow(xy_p_month_trainsplit))
   train_actual_0 <- rep(0, nrow(xy_pa_month_sample_trainsplit))
-  roc_obj_train <- roc(c(train_actual_1, train_actual_0), c(train_pred_1, train_pred_0))
+  roc_obj_train <- roc(c(train_actual_1, train_actual_0), c(train_pred_1, train_pred_0), level = c(0, 1), direction = "<", quiet = TRUE)
   best_threshold_train <- coords(roc_obj_train, "best", ret = c("threshold")) %>% pull() %>% min()
 
   val_pred_1 <- raster::extract(rst, xy_p_month_valsplit)

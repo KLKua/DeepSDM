@@ -15,8 +15,8 @@ if (length(args) == 0) {
   stop("At least one argument must be supplied (input file).n", call. = FALSE)
 }
 
-run_id <- "c13ba82a20194f49b87aa551d0065c05"     # Unique ID for this run
-exp_id <- "688694454263567151"                  # Experiment ID
+run_id <- "7222554cbec140879fc9afd432d539ac"     # Unique ID for this run
+exp_id <- "578676681625834542"                  # Experiment ID
 
 # Base directories
 dir_base_run_id <- file.path("predicts_maxent", run_id)
@@ -175,8 +175,8 @@ for (species in species_list[r_start:min(r_end, length(species_list))]) {
   all_val_actual_0 <- unlist(lapply(actual_10, function(sublist) sublist$val_actual_0))
 
   # Compute ROC for the training data and get "best" threshold
-  roc_train_maxent <- roc(c(all_train_actual_1, all_train_actual_0), c(all_train_maxent_1, all_train_maxent_0))
-  roc_train_deepsdm <- roc(c(all_train_actual_1, all_train_actual_0), c(all_train_deepsdm_1, all_train_deepsdm_0))
+  roc_train_maxent <- roc(c(all_train_actual_1, all_train_actual_0), c(all_train_maxent_1, all_train_maxent_0), levels = c(0, 1), direction = "<", quiet = TRUE)
+  roc_train_deepsdm <- roc(c(all_train_actual_1, all_train_actual_0), c(all_train_deepsdm_1, all_train_deepsdm_0), levels = c(0, 1), direction = "<", quiet = TRUE)
   best_threshold_train_maxent <- coords(roc_train_maxent, "best", ret = c("threshold")) %>% pull() %>% min()
   best_threshold_train_deepsdm <- coords(roc_train_deepsdm, "best", ret = c("threshold")) %>% pull() %>% min()
 

@@ -623,7 +623,7 @@ safe_auc_from_groups <- function(pred_1, pred_0) {
   if (length(x$pred_1) == 0L || length(x$pred_0) == 0L) return(NA_real_)
   actual <- c(rep(1, length(x$pred_1)), rep(0, length(x$pred_0)))
   pred <- c(x$pred_1, x$pred_0)
-  as.numeric(pROC::roc(actual, pred, quiet = TRUE)$auc)
+  as.numeric(pROC::roc(actual, pred, levels = c(0, 1), direction = "<", quiet = TRUE)$auc)
 }
 
 safe_best_threshold <- function(pred_1, pred_0) {
@@ -631,7 +631,7 @@ safe_best_threshold <- function(pred_1, pred_0) {
   if (length(x$pred_1) == 0L || length(x$pred_0) == 0L) return(NA_real_)
   actual <- c(rep(1, length(x$pred_1)), rep(0, length(x$pred_0)))
   pred <- c(x$pred_1, x$pred_0)
-  roc_object <- pROC::roc(actual, pred, quiet = TRUE)
+  roc_object <- pROC::roc(actual, pred, levels = c(0, 1), direction = "<", quiet = TRUE)
   threshold <- pROC::coords(
     roc_object, x = "best", best.method = "youden",
     ret = "threshold", transpose = FALSE
