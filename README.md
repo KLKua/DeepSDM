@@ -17,12 +17,7 @@ Species‑Embedding & Attention Multiscale U‑Net for Species Distribution Mode
 ## Environment Setup
 
 ### Python
-1. Create a Conda environment on a CUDA-capable machine.
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. To exactly match the original experiments, build the Conda environment specified in `python_env.yaml`.
+Follow steps in `setup_python_environment.md`. 
 
 ### R
 1. Install the packages listed in `requirements_r.txt`, then follow `setup_r_environment.md` to prepare the MaxEnt toolchain.
